@@ -30,6 +30,7 @@ enum WithdrawStatus {
   PENDING
   EXECUTED
   REJECTED
+  FAILED
 }
 
 model User {

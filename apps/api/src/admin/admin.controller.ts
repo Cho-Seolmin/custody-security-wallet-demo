@@ -23,4 +23,5 @@ export class AdminController {
   reject(@Req() req: any, @Param("id") id: string) {
     return this.admin.rejectWithdraw(id, req.user.email ?? "admin");
   }
+
 }

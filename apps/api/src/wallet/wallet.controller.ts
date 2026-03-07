@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Query,  Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CreateWalletDto } from "./dto/create-wallet.dto";
 import { WalletService } from "./wallet.service";
@@ -46,4 +46,21 @@ updateWhitelist(@Req() req: any, @Param("id") id: string, @Body() dto: UpdateWhi
 withdraw(@Req() req: any, @Param("id") id: string, @Body() dto: WithdrawDto) {
   return this.walletService.withdraw(req.user.sub, id, dto);
 }
+
+@Get("signer/info")
+@UseGuards(JwtAuthGuard)
+getSignerInfo() {
+  return this.walletService.getSignerInfo();
+}
+
+@Get(":id/withdraws")
+@UseGuards(JwtAuthGuard)
+getWithdrawHistory(
+  @Req() req: any,
+  @Param("id") id: string,
+  @Query("status") status?: "PENDING" | "EXECUTED" | "REJECTED" | "FAILED",
+) {
+  return this.walletService.getWithdrawHistory(req.user.sub, id, status);
+}
+
 }

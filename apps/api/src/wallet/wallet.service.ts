@@ -3,15 +3,26 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateWalletDto } from "./dto/create-wallet.dto";
 import { randomBytes } from "crypto";
 import { JsonRpcProvider } from "ethers";
+import { Wallet } from "ethers";
 
 @Injectable()
 export class WalletService {
   private readonly provider: JsonRpcProvider;
+  private signer: Wallet;
+
+  
 
   constructor(private prisma: PrismaService) {
     const rpc = process.env.SEPOLIA_RPC_URL;
     if (!rpc) throw new Error("SEPOLIA_RPC_URL is missing in .env");
     this.provider = new JsonRpcProvider(rpc);
+
+    const pk = process.env.BACKEND_SIGNER_PRIVATE_KEY;
+    if (!pk) {
+      throw new Error("BACKEND_SIGNER_PRIVATE_KEY missing");
+    }
+    this.signer = new Wallet(pk, this.provider);
+  
   }
 
   async create(userId: string, dto: CreateWalletDto) {
@@ -165,23 +176,97 @@ export class WalletService {
       }
   
       case "BACKEND_SEC": {
-        // 오늘은 tx 전송 없이 “승인된 것으로 기록만” 남겨도 됨 (내일 signer 붙임)
-        const req = await this.prisma.withdrawRequest.create({
-          data: {
-            walletId: wallet.id,
-            amount: dto.amount,
-            toAddress: dto.toAddress,
-            status: "EXECUTED",
-            txHash: `BACKEND_SEC_PLACEHOLDER_${Date.now()}`,
-          },
-          select: { id: true, status: true, txHash: true, amount: true, toAddress: true, createdAt: true },
-        });
-  
-        return {
-          mode: "BACKEND_SEC",
-          message: "Recorded as executed (placeholder). Wire signer tx on Day3.",
-          withdrawRequest: req,
-        };
+        const signerAddress = await this.signer.getAddress();
+        const signerBalance = await this.provider.getBalance(signerAddress);
+      
+        if (signerBalance < amountWei) {
+          const failedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "FAILED",
+              txHash: null,
+            },
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              toAddress: true,
+              createdAt: true,
+            },
+          });
+      
+          throw new BadRequestException({
+            message: "Insufficient signer balance",
+            signerAddress,
+            signerBalanceWei: signerBalance.toString(),
+            requestedAmountWei: dto.amount,
+            withdrawRequest: failedRequest,
+          });
+        }
+      
+        try {
+          const tx = await this.signer.sendTransaction({
+            to: dto.toAddress,
+            value: amountWei,
+          });
+      
+          const receipt = await tx.wait();
+      
+          const executedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "EXECUTED",
+              txHash: tx.hash,
+            },
+            select: {
+              id: true,
+              walletId: true,
+              amount: true,
+              toAddress: true,
+              status: true,
+              createdAt: true,
+              approvedBy: true,
+              txHash: true,
+            },
+          });
+      
+          return {
+            mode: "BACKEND_SEC",
+            message: "Transaction executed on Sepolia",
+            txHash: tx.hash,
+            blockNumber: receipt?.blockNumber ?? null,
+            withdrawRequest: executedRequest,
+          };
+        } catch (error: any) {
+          const failedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "FAILED",
+              txHash: null,
+            },
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              toAddress: true,
+              createdAt: true,
+            },
+          });
+      
+          console.error("BACKEND_SEC tx failed:", error);
+      
+          throw new BadRequestException({
+            message: "Transaction failed",
+            error: error?.shortMessage || error?.message || "Unknown error",
+            withdrawRequest: failedRequest,
+          });
+        }
       }
   
       case "POLICY_GUARD": {
@@ -206,6 +291,53 @@ export class WalletService {
       default:
         throw new BadRequestException("Unsupported wallet type");
     }
+  }
+  
+  async getSignerInfo() {
+    const address = await this.signer.getAddress();
+    const balanceWei = await this.provider.getBalance(address);
+  
+    return {
+      address,
+      balanceWei: balanceWei.toString(),
+    };
+  }
+  
+  async getWithdrawHistory(
+    userId: string,
+    walletId: string,
+    status?: "PENDING" | "EXECUTED" | "REJECTED" | "FAILED",
+  ) {
+    const wallet = await this.prisma.wallet.findUnique({
+      where: { id: walletId },
+    });
+  
+    if (!wallet) {
+      throw new NotFoundException("Wallet not found");
+    }
+  
+    if (wallet.userId !== userId) {
+      throw new ForbiddenException("Not your wallet");
+    }
+  
+    return this.prisma.withdrawRequest.findMany({
+      where: {
+        walletId,
+        ...(status ? { status } : {}),
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      select: {
+        id: true,
+        amount: true,
+        toAddress: true,
+        status: true,
+        approvedBy: true,
+        txHash: true,
+        createdAt: true,
+      },
+    });
   }
 
 }
