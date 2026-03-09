@@ -6,12 +6,17 @@ import WalletList from "../components/WalletList";
 import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
 import { useNavigate } from "react-router-dom";
+import WalletConnect from "../components/WalletConnect";
 
 export default function DashboardPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const handleLogout = () => {
+    localStorage.removeItem("accessToken");
+    navigate("/login");
+  };
 
   const fetchWallets = async () => {
     const walletData = await getWallets();
@@ -37,12 +42,19 @@ export default function DashboardPage() {
     <div style={{ padding: "40px" }}>
       <h1>Dashboard</h1>
 
+      <button onClick={handleLogout}>로그아웃</button>
+
       {me && (
         <div style={{ marginBottom: "20px" }}>
           <p>이메일: {me.email}</p>
           <p>권한: {me.role}</p>
         </div>
       )}
+    <WalletConnect savedAddress={me?.walletAddress} onSaved={async () => {
+      const meData = await getMe();
+      setMe(meData);
+    }} />
+    <CreateWalletForm wallets={wallets} onCreated={fetchWallets} />
 
     <div style={{ marginBottom: "20px" }}>
       <button onClick={() => navigate("/admin")}>관리자 페이지 이동</button>

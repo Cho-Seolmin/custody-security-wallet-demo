@@ -72,4 +72,34 @@ export class AuthService {
 
     return { accessToken };
   }
+
+  async getMe(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        walletAddress: true,
+        createdAt: true,
+      },
+    });
+  }
+  
+  async updateMyWalletAddress(userId: string, walletAddress: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { walletAddress },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        walletAddress: true,
+        createdAt: true,
+      },
+    });
+  }
+
 }

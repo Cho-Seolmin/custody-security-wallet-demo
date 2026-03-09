@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, Patch, BadRequestException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { UseGuards, Req } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { UpdateWalletAddressDto } from "./dto/update-wallet-address.dto";
+
 
 
 @Controller("auth")
@@ -26,9 +28,21 @@ export class AuthController {
   }
 
   @Get("me")
-
   @UseGuards(JwtAuthGuard)
-  async getMe(@Req() req: any) {
-    return req.user;
+  getMe(@Req() req: any) {
+    return this.auth.getMe(req.user.sub);
   }
+  @Patch("me/wallet-address")
+  @UseGuards(JwtAuthGuard)
+  updateMyWalletAddress(
+    @Req() req: any,
+    @Body() body: { walletAddress: string },
+  ) {
+    if (!body?.walletAddress) {
+      throw new BadRequestException("walletAddress is required");
+    }
+
+    return this.auth.updateMyWalletAddress(req.user.sub, body.walletAddress);
+  }
+ 
 }

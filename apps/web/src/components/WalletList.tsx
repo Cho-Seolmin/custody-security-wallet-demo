@@ -16,5 +16,6 @@ export default function WalletList({ wallets }: Props) {
         <WalletCard key={wallet.id} wallet={wallet} />
       ))}
     </div>
+    
   );
 }

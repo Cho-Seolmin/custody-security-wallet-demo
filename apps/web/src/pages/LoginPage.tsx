@@ -44,6 +44,10 @@ export default function LoginPage() {
         <button type="submit">로그인</button>
       </form>
 
+      <p>
+        계정이 없나요? <a href="/register">회원가입</a>
+      </p>
+
       {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createWithdraw, getWalletBalance, getWalletWithdraws } from "../api/wallet";
 import type { Wallet, WalletBalance, WithdrawItem } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
+import { formatEther } from "ethers";
 
 type Props = {
   wallet: Wallet;
@@ -77,8 +78,9 @@ export default function WalletCard({ wallet }: Props) {
 
       {balance && (
         <div style={{ marginTop: "12px" }}>
-          <strong>잔액(wei): </strong>
-          {balance.balanceWei}
+          <strong>잔액:</strong>
+          <div>{balance.balanceWei} wei</div>
+          <div>{formatEther(balance.balanceWei)} ETH</div>
         </div>
       )}
 
