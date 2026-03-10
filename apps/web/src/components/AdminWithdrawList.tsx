@@ -7,7 +7,24 @@ type Props = {
 };
 
 export default function AdminWithdrawList({ items, onRefresh }: Props) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "EXECUTED":
+        return "green";
+      case "FAILED":
+        return "red";
+      case "PENDING":
+        return "orange";
+      case "REJECTED":
+        return "gray";
+      default:
+        return "black";
+    }
+  };
   const handleApprove = async (id: string) => {
+    const ok = window.confirm("정말 승인하시겠습니까?");
+    if (!ok) return;
+  
     try {
       await approveWithdraw(id);
       await onRefresh();
@@ -18,6 +35,9 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
   };
 
   const handleReject = async (id: string) => {
+    const ok = window.confirm("정말 거절하시겠습니까?");
+    if (!ok) return;
+  
     try {
       await rejectWithdraw(id);
       await onRefresh();
@@ -46,7 +66,9 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
           <div>ID: {item.id}</div>
           <div>금액(wei): {item.amount}</div>
           <div>받는 주소: {item.toAddress}</div>
-          <div>상태: {item.status}</div>
+          <div>
+            상태: <strong style={{ color: getStatusColor(item.status) }}>{item.status}</strong>
+          </div>
           <div>승인자: {item.approvedBy ?? "-"}</div>
           <div>txHash: {item.txHash ?? "-"}</div>
           <div>생성일: {new Date(item.createdAt).toLocaleString()}</div>

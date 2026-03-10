@@ -7,6 +7,20 @@ type Props = {
 };
 
 export default function WithdrawHistory({ items }: Props) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "EXECUTED":
+        return "green";
+      case "FAILED":
+        return "red";
+      case "PENDING":
+        return "orange";
+      case "REJECTED":
+        return "gray";
+      default:
+        return "black";
+    }
+  };
   if (items.length === 0) {
     return <p>출금 이력이 없습니다.</p>;
   }
@@ -17,7 +31,9 @@ export default function WithdrawHistory({ items }: Props) {
       <ul style={{ paddingLeft: "20px" }}>
         {items.map((item) => (
           <li key={item.id} style={{ marginBottom: "10px" }}>
-            <div>상태: {item.status}</div>
+            <div>
+              상태: <strong style={{ color: getStatusColor(item.status) }}>{item.status}</strong>
+            </div>
             <div>금액(ETH): {formatEther(item.amount)}</div>
             <div>받는 주소:{shortenAddress(item.toAddress)}</div>
             <div>승인자: {item.approvedBy ?? "-"}</div>

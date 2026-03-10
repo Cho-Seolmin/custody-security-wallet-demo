@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { login } from "../api/auth";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string })?.from || "/dashboard";
 
   const [email, setEmail] = useState("test@test.com");
   const [password, setPassword] = useState("1234");
@@ -16,7 +18,7 @@ export default function LoginPage() {
     try {
       const data = await login(email, password);
       localStorage.setItem("accessToken", data.accessToken);
-      navigate("/dashboard");
+      navigate(from);
     } catch (err: any) {
       setError(err?.response?.data?.message || "로그인 실패");
     }

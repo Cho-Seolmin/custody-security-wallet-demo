@@ -3,6 +3,7 @@ import { createWithdraw, getWalletBalance, getWalletWithdraws } from "../api/wal
 import type { Wallet, WalletBalance, WithdrawItem } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
 import { formatEther } from "ethers";
+import { shortenAddress } from "../utils/address";
 
 type Props = {
   wallet: Wallet;
@@ -17,6 +18,15 @@ export default function WalletCard({ wallet }: Props) {
   const [amount, setAmount] = useState("100000000000000");
   const [message, setMessage] = useState("");
 
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage("주소가 복사되었습니다.");
+    } catch {
+      setMessage("주소 복사 실패");
+    }
+  };
+
   const handleCheckBalance = async () => {
     try {
       setMessage("");
@@ -28,6 +38,11 @@ export default function WalletCard({ wallet }: Props) {
   };
 
   const handleLoadWithdraws = async () => {
+    if (showWithdraws) {
+      setShowWithdraws(false);
+      return;
+    }
+  
     try {
       setMessage("");
       const data = await getWalletWithdraws(wallet.id);
@@ -66,13 +81,21 @@ export default function WalletCard({ wallet }: Props) {
       }}
     >
       <h3>{wallet.walletType}</h3>
-      <div>주소: {wallet.address}</div>
+      <div style={{ marginTop: "8px" }}>
+        주소: {shortenAddress(wallet.address)}
+        <button
+          onClick={() => copy(wallet.address)}
+          style={{ marginLeft: "8px" }}
+        >
+          복사
+        </button>
+      </div>
       <div>ID: {wallet.id}</div>
 
       <div style={{ marginTop: "12px" }}>
         <button onClick={handleCheckBalance}>잔액 조회</button>
         <button onClick={handleLoadWithdraws} style={{ marginLeft: "8px" }}>
-          출금 이력 보기
+          {showWithdraws ? "출금 이력 닫기" : "출금 이력 보기"}
         </button>
       </div>
 
