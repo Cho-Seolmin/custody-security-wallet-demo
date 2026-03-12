@@ -58,7 +58,15 @@ getSignerInfo() {
 getWithdrawHistory(
   @Req() req: any,
   @Param("id") id: string,
-  @Query("status") status?: "PENDING" | "EXECUTED" | "REJECTED" | "FAILED",
+  @Query("status")
+  status?:
+    | "PENDING"
+    | "APPROVED"
+    | "QUEUED"
+    | "PROCESSING"
+    | "EXECUTED"
+    | "REJECTED"
+    | "FAILED",
 ) {
   return this.walletService.getWithdrawHistory(req.user.sub, id, status);
 }

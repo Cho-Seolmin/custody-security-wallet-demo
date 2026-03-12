@@ -28,21 +28,47 @@ enum WalletType {
 
 enum WithdrawStatus {
   PENDING
+  APPROVED
+  QUEUED
+  PROCESSING
   EXECUTED
   REJECTED
   FAILED
 }
 
+enum QueueStatus {
+  PENDING
+  RESERVED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  DEAD
+}
+
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+  WORKER
+  SIGNER
+}
+
+enum AdminApprovalDecision {
+  APPROVE
+  REJECT
+}
+
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  passwordHash String
-  role         UserRole   @default(USER)
-  status       UserStatus @default(PENDING)
-  createdAt    DateTime   @default(now())
+  id            String     @id @default(cuid())
+  email         String     @unique
+  passwordHash  String
+  role          UserRole   @default(USER)
+  status        UserStatus @default(PENDING)
+  createdAt     DateTime   @default(now())
   walletAddress String?
 
-  wallets      Wallet[]
+  wallets   Wallet[]
+  approvals AdminApproval[]
 }
 
 model Wallet {
@@ -52,10 +78,12 @@ model Wallet {
   address    String
   createdAt  DateTime   @default(now())
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  withdraws  WithdrawRequest[]
-  limit      WalletLimit?
-  whitelist  Whitelist[]
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  withdraws           WithdrawRequest[]
+  limit               WalletLimit?
+  whitelist           Whitelist[]
+  securityState       WalletSecurityState?
+  withdrawalAuditLogs WithdrawalAuditLog[]
 
   @@unique([userId, walletType])
 }
@@ -63,16 +91,112 @@ model Wallet {
 model WithdrawRequest {
   id         String         @id @default(cuid())
   walletId   String
-  amount     String         // wei string
+  amount     String // wei string
   toAddress  String
   status     WithdrawStatus @default(PENDING)
   createdAt  DateTime       @default(now())
   approvedBy String?
   txHash     String?
 
-  wallet     Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  // ===== Tier1 Security 확장 필드 =====
+  executionType  WalletType?
+  failureReason  String?
+  riskScore      Int?
+  riskDecision   String?
+  queuedAt       DateTime?
+  processingAt   DateTime?
+  broadcastedAt  DateTime?
+  confirmedAt    DateTime?
+  finalizedAt    DateTime?
+  retryCount     Int         @default(0)
+  nonce          Int?
+  idempotencyKey String?     @unique
+  metadata       Json?
+
+  wallet         Wallet               @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  queue          WithdrawalQueue?
+  auditLogs      WithdrawalAuditLog[]
+  adminApprovals AdminApproval[]
 
   @@index([status])
+  @@index([walletId, createdAt])
+  @@index([toAddress])
+}
+
+model WithdrawalQueue {
+  id                String      @id @default(cuid())
+  withdrawRequestId String      @unique
+  status            QueueStatus @default(PENDING)
+  attemptCount      Int         @default(0)
+  maxAttempts       Int         @default(3)
+  availableAt       DateTime    @default(now())
+  reservedAt        DateTime?
+  workerId          String?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  withdrawRequest WithdrawRequest @relation(fields: [withdrawRequestId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+}
+
+model WithdrawalAuditLog {
+  id                String         @id @default(cuid())
+  withdrawRequestId String
+  walletId          String
+  userId            String?
+  eventType         String
+  actorType         AuditActorType
+  actorId           String?
+  message           String?
+  data              Json?
+  createdAt         DateTime       @default(now())
+
+  withdrawRequest WithdrawRequest @relation(fields: [withdrawRequestId], references: [id], onDelete: Cascade)
+  wallet          Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([withdrawRequestId, createdAt])
+  @@index([walletId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model AdminApproval {
+  id                String                @id @default(cuid())
+  withdrawRequestId String
+  adminUserId       String
+  decision          AdminApprovalDecision
+  comment           String?
+  createdAt         DateTime              @default(now())
+
+  withdrawRequest WithdrawRequest @relation(fields: [withdrawRequestId], references: [id], onDelete: Cascade)
+  adminUser       User            @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([withdrawRequestId, createdAt])
+  @@index([adminUserId, createdAt])
+}
+
+model WalletSecurityState {
+  walletId        String    @id
+  isFrozen        Boolean   @default(false)
+  withdrawPaused  Boolean   @default(false)
+  cooldownSeconds Int       @default(0)
+  lastWithdrawAt  DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model AddressBlacklist {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  reason    String?
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([address, isActive])
 }
 
 model WalletLimit {
@@ -80,7 +204,7 @@ model WalletLimit {
   dailyLimit    String
   singleTxLimit String
 
-  wallet        Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }
 
 model Whitelist {
@@ -88,7 +212,7 @@ model Whitelist {
   walletId String
   address  String
 
-  wallet   Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@unique([walletId, address])
 }
