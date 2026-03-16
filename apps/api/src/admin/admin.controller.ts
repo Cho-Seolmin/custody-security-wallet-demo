@@ -15,13 +15,12 @@ export class AdminController {
 
   @Post("withdraws/:id/approve")
   approve(@Req() req: any, @Param("id") id: string) {
-    // req.user.email 등을 approvedBy로 남겨도 되고 id 남겨도 됨
-    return this.admin.approveWithdraw(id, req.user.email ?? "admin");
+    return this.admin.approveWithdraw(id, req.user.sub);
   }
-
+  
   @Post("withdraws/:id/reject")
   reject(@Req() req: any, @Param("id") id: string) {
-    return this.admin.rejectWithdraw(id, req.user.email ?? "admin");
+    return this.admin.rejectWithdraw(id, req.user.sub);
   }
 
 }

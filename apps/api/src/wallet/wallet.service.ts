@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import { SignerService } from "./signer.service";
 import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
+import { QueueService } from "./queue.service";
 
 @Injectable()
 export class WalletService {
@@ -18,6 +19,7 @@ export class WalletService {
     private signerService: SignerService,
     private policyEngineService: PolicyEngineService,
     private withdrawalAuditService: WithdrawalAuditService,
+    private queueService: QueueService,
   ) {}
 
   async create(userId: string, dto: CreateWalletDto) {
@@ -49,22 +51,42 @@ export class WalletService {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
     });
-
+  
     if (!wallet) throw new NotFoundException("Wallet not found");
     if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
-
+  
     try {
-      const balanceWei = await this.signerService.getProvider().getBalance(wallet.address);
-
+  
+      // BACKEND_SEC는 signer 잔액 표시
+      if (wallet.walletType === "BACKEND_SEC") {
+        const signerAddress = await this.signerService.getSignerAddress();
+        const balanceWei = await this.signerService.getSignerBalance();
+  
+        return {
+          walletId: wallet.id,
+          address: signerAddress,
+          balanceWei: balanceWei.toString(),
+          source: "BACKEND_SIGNER",
+        };
+      }
+  
+      // 다른 walletType은 기존 방식
+      const balanceWei =
+        await this.signerService.getProvider().getBalance(wallet.address);
+  
       return {
         walletId: wallet.id,
         address: wallet.address,
         balanceWei: balanceWei.toString(),
+        source: "WALLET_ADDRESS",
       };
+  
     } catch (error: any) {
       console.error("RPC getBalance error:", error);
-
-      throw new BadRequestException("Failed to fetch balance from RPC provider");
+  
+      throw new BadRequestException(
+        "Failed to fetch balance from RPC provider",
+      );
     }
   }
 
@@ -218,68 +240,15 @@ export class WalletService {
           };
         }
 
-      case "BACKEND_SEC": {
-        const signerAddress = await this.signerService.getSignerAddress();
-        const signerBalance = await this.signerService.getSignerBalance();
-
-        if (signerBalance < amountWei) {
-          const failedRequest = await this.prisma.withdrawRequest.create({
+        case "BACKEND_SEC": {
+          const queuedRequest = await this.prisma.withdrawRequest.create({
             data: {
               walletId: wallet.id,
               amount: dto.amount,
               toAddress: dto.toAddress,
-              status: "FAILED",
-              txHash: null,
+              status: "QUEUED",
               executionType: "BACKEND_SEC",
-              failureReason: "Insufficient signer balance",
-            },
-            select: {
-              id: true,
-              status: true,
-              amount: true,
-              toAddress: true,
-              createdAt: true,
-            },
-          });
-        
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: failedRequest.id,
-            walletId: wallet.id,
-            userId,
-            eventType: "TX_FAILED",
-            actorType: "SYSTEM",
-            message: "Insufficient signer balance",
-            data: {
-              signerAddress,
-              signerBalanceWei: signerBalance.toString(),
-              requestedAmountWei: dto.amount,
-            },
-          });
-        
-          throw new BadRequestException({
-            message: "Insufficient signer balance",
-            signerAddress,
-            signerBalanceWei: signerBalance.toString(),
-            requestedAmountWei: dto.amount,
-            withdrawRequest: failedRequest,
-          });
-        }
-
-        try {
-          const tx = await this.signerService.sendNativeTransaction(
-            dto.toAddress,
-            amountWei,
-          );
-
-          const receipt = await tx.wait();
-          const executedRequest = await this.prisma.withdrawRequest.create({
-            data: {
-              walletId: wallet.id,
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-              status: "EXECUTED",
-              txHash: tx.hash,
-              executionType: "BACKEND_SEC",
+              queuedAt: new Date(),
             },
             select: {
               id: true,
@@ -292,73 +261,45 @@ export class WalletService {
               txHash: true,
             },
           });
-          
+        
           await this.withdrawalAuditService.append({
-            withdrawRequestId: executedRequest.id,
+            withdrawRequestId: queuedRequest.id,
             walletId: wallet.id,
             userId,
-            eventType: "TX_CONFIRMED",
-            actorType: "SIGNER",
-            message: "BACKEND_SEC transaction executed on Sepolia",
+            eventType: "REQUEST_CREATED",
+            actorType: "USER",
+            actorId: userId,
+            message: "BACKEND_SEC withdraw request created",
             data: {
-              txHash: tx.hash,
-              blockNumber: receipt?.blockNumber ?? null,
+              walletType: wallet.walletType,
               amount: dto.amount,
               toAddress: dto.toAddress,
+              status: "QUEUED",
             },
           });
-          
+        
+          const queue = await this.queueService.enqueue(queuedRequest.id);
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "QUEUED",
+            actorType: "SYSTEM",
+            message: "Withdraw request enqueued for BACKEND_SEC execution",
+            data: {
+              queueId: queue.id,
+              queueStatus: queue.status,
+            },
+          });
+        
           return {
             mode: "BACKEND_SEC",
-            message: "Transaction executed on Sepolia",
-            txHash: tx.hash,
-            blockNumber: receipt?.blockNumber ?? null,
-            withdrawRequest: executedRequest,
+            message: "Withdraw request queued. Worker execution will process it.",
+            withdrawRequest: queuedRequest,
+            queue,
           };
-
-        } catch (error: any) {
-          const failedRequest = await this.prisma.withdrawRequest.create({
-            data: {
-              walletId: wallet.id,
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-              status: "FAILED",
-              txHash: null,
-              executionType: "BACKEND_SEC",
-              failureReason: error?.shortMessage || error?.message || "Unknown error",
-            },
-            select: {
-              id: true,
-              status: true,
-              amount: true,
-              toAddress: true,
-              createdAt: true,
-            },
-          });
-          
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: failedRequest.id,
-            walletId: wallet.id,
-            userId,
-            eventType: "TX_FAILED",
-            actorType: "SIGNER",
-            message: "BACKEND_SEC transaction failed",
-            data: {
-              error: error?.shortMessage || error?.message || "Unknown error",
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-            },
-          });
-          
-          console.error("BACKEND_SEC tx failed:", error);
-          
-          throw new BadRequestException({
-            message: "Transaction failed",
-            error: error?.shortMessage || error?.message || "Unknown error",
-            withdrawRequest: failedRequest,
-          });
         }
-      }
 
       case "POLICY_GUARD": {
         const req = await this.prisma.withdrawRequest.create({
@@ -449,7 +390,11 @@ export class WalletService {
         approvedBy: true,
         txHash: true,
         executionType: true,
+        retryCount: true,
         failureReason: true,
+        queuedAt: true,
+        processingAt: true,
+        confirmedAt: true,
         createdAt: true,
       },
     });
