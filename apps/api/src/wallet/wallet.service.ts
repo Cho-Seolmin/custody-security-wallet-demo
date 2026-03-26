@@ -301,46 +301,66 @@ export class WalletService {
           };
         }
 
-      case "POLICY_GUARD": {
-        const req = await this.prisma.withdrawRequest.create({
-          data: {
+        case "POLICY_GUARD": {
+          const queuedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+              executionType: "POLICY_GUARD",
+              queuedAt: new Date(),
+            },
+            select: {
+              id: true,
+              walletId: true,
+              amount: true,
+              toAddress: true,
+              status: true,
+              createdAt: true,
+              approvedBy: true,
+              txHash: true,
+            },
+          });
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
             walletId: wallet.id,
-            amount: dto.amount,
-            toAddress: dto.toAddress,
-            status: "PENDING",
-            executionType: "POLICY_GUARD",
-          },
-          select: {
-            id: true,
-            status: true,
-            amount: true,
-            toAddress: true,
-            createdAt: true,
-          },
-        });
-      
-        await this.withdrawalAuditService.append({
-          withdrawRequestId: req.id,
-          walletId: wallet.id,
-          userId,
-          eventType: "REQUEST_CREATED",
-          actorType: "USER",
-          actorId: userId,
-          message: "POLICY_GUARD withdraw request created",
-          data: {
-            walletType: wallet.walletType,
-            amount: dto.amount,
-            toAddress: dto.toAddress,
-            status: "PENDING",
-          },
-        });
-      
-        return {
-          mode: "POLICY_GUARD",
-          message: "Pending. Contract withdraw integration will be added with ABI/address.",
-          withdrawRequest: req,
-        };
-      }
+            userId,
+            eventType: "REQUEST_CREATED",
+            actorType: "USER",
+            actorId: userId,
+            message: "POLICY_GUARD withdraw request created",
+            data: {
+              walletType: wallet.walletType,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+            },
+          });
+        
+          const queue = await this.queueService.enqueue(queuedRequest.id);
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "QUEUED",
+            actorType: "SYSTEM",
+            message: "Withdraw request enqueued for POLICY_GUARD execution",
+            data: {
+              queueId: queue.id,
+              queueStatus: queue.status,
+            },
+          });
+        
+          return {
+            mode: "POLICY_GUARD",
+            message: "Withdraw request queued. Worker execution will process it.",
+            withdrawRequest: queuedRequest,
+            queue,
+          };
+        }
 
       default:
         throw new BadRequestException("Unsupported wallet type");
