@@ -71,4 +71,10 @@ getWithdrawHistory(
   return this.walletService.getWithdrawHistory(req.user.sub, id, status);
 }
 
+@Get(":id/whitelist")
+@UseGuards(JwtAuthGuard)
+getWhitelist(@Req() req: any, @Param("id") id: string) {
+  return this.walletService.getWhitelist(req.user.sub, id);
+}
+
 }

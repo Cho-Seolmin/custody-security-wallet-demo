@@ -31,3 +31,18 @@ export async function createWallet(walletType: string) {
   const res = await api.post("/wallets", { walletType });
   return res.data;
 }
+
+export async function updateWalletWhitelist(
+  walletId: string,
+  addresses: string[],
+) {
+  const res = await api.post(`/wallets/${walletId}/whitelist`, {
+    addresses,
+  });
+  return res.data;
+}
+
+export async function getWalletWhitelist(walletId: string) {
+  const res = await api.get(`/wallets/${walletId}/whitelist`);
+  return res.data;
+}

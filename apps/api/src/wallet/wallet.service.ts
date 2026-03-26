@@ -11,6 +11,7 @@ import { SignerService } from "./signer.service";
 import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { QueueService } from "./queue.service";
+import { isAddress } from "ethers";
 
 @Injectable()
 export class WalletService {
@@ -116,19 +117,39 @@ export class WalletService {
 
   async updateWhitelist(userId: string, walletId: string, dto: { addresses: string[] }) {
     const wallet = await this.prisma.wallet.findUnique({ where: { id: walletId } });
-
+  
     if (!wallet) throw new NotFoundException("Wallet not found");
     if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
-
+    if (wallet.walletType !== "BACKEND_SEC") {
+      throw new BadRequestException("Whitelist is only supported for BACKEND_SEC wallets");
+    }
+  
+    const normalizedAddresses = dto.addresses
+      .map((address) => address.trim().toLowerCase())
+      .filter((address) => address.length > 0);
+  
+    // 주소 형식 검사
+    for (const address of normalizedAddresses) {
+      if (!isAddress(address)) {
+        throw new BadRequestException(`Invalid address: ${address}`);
+      }
+    }
+  
+    // 중복 검사
+    const uniqueAddresses = [...new Set(normalizedAddresses)];
+    if (uniqueAddresses.length !== normalizedAddresses.length) {
+      throw new BadRequestException("Duplicate addresses are not allowed");
+    }
+  
     await this.prisma.whitelist.deleteMany({ where: { walletId } });
-
-    const data = dto.addresses.map((address) => ({ walletId, address }));
-
+  
+    const data = uniqueAddresses.map((address) => ({ walletId, address }));
+  
     await this.prisma.whitelist.createMany({
       data,
       skipDuplicates: true,
     });
-
+  
     return this.prisma.whitelist.findMany({
       where: { walletId },
       select: { id: true, address: true },
@@ -375,6 +396,25 @@ export class WalletService {
       address,
       balanceWei: balanceWei.toString(),
     };
+  }
+
+  async getWhitelist(userId: string, walletId: string) {
+    
+    const wallet = await this.prisma.wallet.findUnique({
+      where: { id: walletId },
+    });
+
+    if (!wallet) throw new NotFoundException("Wallet not found");
+    if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
+    if (wallet.walletType !== "BACKEND_SEC") {
+      throw new BadRequestException("Whitelist is only supported for BACKEND_SEC wallets");
+    }
+  
+    return this.prisma.whitelist.findMany({
+      where: { walletId },
+      select: { id: true, address: true },
+      orderBy: { address: "asc" },
+    });
   }
 
   async getWithdrawHistory(
