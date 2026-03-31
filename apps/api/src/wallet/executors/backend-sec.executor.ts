@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { SignerService } from "../signer.service";
+import { ExecutorResult } from "./executor.types";
 
 @Injectable()
 export class BackendSecExecutor {
@@ -10,7 +11,7 @@ export class BackendSecExecutor {
   async execute(params: {
     toAddress: string;
     amountWei: bigint;
-  }) {
+  }): Promise<ExecutorResult> {
     const signerAddress = await this.signerService.getSignerAddress();
     const signerBalance = await this.signerService.getSignerBalance();
 
@@ -32,6 +33,7 @@ export class BackendSecExecutor {
     );
 
     return {
+      type: "ONCHAIN_TX",
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber ?? null,
       receipt,

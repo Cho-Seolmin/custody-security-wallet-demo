@@ -11,6 +11,9 @@ import { AdminApprovalService } from "./admin-approval.service";
 import { ExecutionRouterService } from "./execution-router.service";
 import { BackendSecExecutor } from "./executors/backend-sec.executor";
 import { PolicyGuardExecutor } from "./executors/policy-guard.executor";
+import { KmsExecutor } from "./executors/Kms.executor";
+import { KmsService } from "./kms.service";
+
 
 @Module({
   controllers: [WalletController],
@@ -24,8 +27,10 @@ import { PolicyGuardExecutor } from "./executors/policy-guard.executor";
     WithdrawalWorkerService,
     AdminApprovalService,
     ExecutionRouterService,
+    KmsService,
     BackendSecExecutor,
     PolicyGuardExecutor,
+    KmsExecutor,
   ],
 })
 export class WalletModule {}

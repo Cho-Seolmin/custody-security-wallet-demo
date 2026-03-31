@@ -12,6 +12,7 @@ import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { QueueService } from "./queue.service";
 import { isAddress } from "ethers";
+import { KmsService} from "./kms.service";
 
 @Injectable()
 export class WalletService {
@@ -21,6 +22,7 @@ export class WalletService {
     private policyEngineService: PolicyEngineService,
     private withdrawalAuditService: WithdrawalAuditService,
     private queueService: QueueService,
+    private kmsService: KmsService,
   ) {}
 
   async create(userId: string, dto: CreateWalletDto) {
@@ -41,11 +43,39 @@ export class WalletService {
   }
 
   async list(userId: string) {
-    return this.prisma.wallet.findMany({
+    const wallets = await this.prisma.wallet.findMany({
       where: { userId },
       select: { id: true, walletType: true, address: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });
+  
+    return Promise.all(
+      wallets.map(async (wallet) => {
+        if (wallet.walletType === "KMS") {
+          const resolvedAddress = await this.kmsService.getAddress();
+          return {
+            ...wallet,
+            resolvedAddress,
+            addressSource: "KMS",
+          };
+        }
+  
+        if (wallet.walletType === "BACKEND_SEC") {
+          const resolvedAddress = await this.signerService.getSignerAddress();
+          return {
+            ...wallet,
+            resolvedAddress,
+            addressSource: "BACKEND_SIGNER",
+          };
+        }
+  
+        return {
+          ...wallet,
+          resolvedAddress: wallet.address,
+          addressSource: "WALLET_ROW",
+        };
+      }),
+    );
   }
 
   async getBalance(userId: string, walletId: string) {
@@ -57,8 +87,6 @@ export class WalletService {
     if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
   
     try {
-  
-      // BACKEND_SEC는 signer 잔액 표시
       if (wallet.walletType === "BACKEND_SEC") {
         const signerAddress = await this.signerService.getSignerAddress();
         const balanceWei = await this.signerService.getSignerBalance();
@@ -71,7 +99,18 @@ export class WalletService {
         };
       }
   
-      // 다른 walletType은 기존 방식
+      if (wallet.walletType === "KMS") {
+        const kmsAddress = await this.kmsService.getAddress();
+        const balanceWei = await this.kmsService.getBalance();
+  
+        return {
+          walletId: wallet.id,
+          address: kmsAddress,
+          balanceWei: balanceWei.toString(),
+          source: "KMS_ADDRESS",
+        };
+      }
+  
       const balanceWei =
         await this.signerService.getProvider().getBalance(wallet.address);
   
@@ -81,7 +120,6 @@ export class WalletService {
         balanceWei: balanceWei.toString(),
         source: "WALLET_ADDRESS",
       };
-  
     } catch (error: any) {
       console.error("RPC getBalance error:", error);
   
@@ -217,49 +255,66 @@ export class WalletService {
         };
       }
 
-      case "KMS":
-        case "SSS":
-        case "MPC": {
-          const req = await this.prisma.withdrawRequest.create({
-            data: {
-              walletId: wallet.id,
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-              status: "EXECUTED",
-              txHash: `MOCK_TX_${Date.now()}`,
-              executionType: wallet.walletType,
-            },
-            select: {
-              id: true,
-              status: true,
-              txHash: true,
-              amount: true,
-              toAddress: true,
-              createdAt: true,
-            },
-          });
-        
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: req.id,
+      case "KMS": {
+        const queuedRequest = await this.prisma.withdrawRequest.create({
+          data: {
             walletId: wallet.id,
-            userId,
-            eventType: "MOCK_EXECUTED",
-            actorType: "SYSTEM",
-            message: `${wallet.walletType} mock executed`,
-            data: {
-              walletType: wallet.walletType,
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-              txHash: req.txHash,
-            },
-          });
-        
-          return {
-            mode: wallet.walletType,
-            message: "Mock executed (demo).",
-            withdrawRequest: req,
-          };
-        }
+            amount: dto.amount,
+            toAddress: dto.toAddress,
+            status: "QUEUED",
+            executionType: "KMS",
+            queuedAt: new Date(),
+          },
+          select: {
+            id: true,
+            walletId: true,
+            amount: true,
+            toAddress: true,
+            status: true,
+            createdAt: true,
+            approvedBy: true,
+            txHash: true,
+          },
+        });
+      
+        await this.withdrawalAuditService.append({
+          withdrawRequestId: queuedRequest.id,
+          walletId: wallet.id,
+          userId,
+          eventType: "REQUEST_CREATED",
+          actorType: "USER",
+          actorId: userId,
+          message: "KMS withdraw request created",
+          data: {
+            walletType: wallet.walletType,
+            amount: dto.amount,
+            toAddress: dto.toAddress,
+            status: "QUEUED",
+          },
+        });
+      
+        const queue = await this.queueService.enqueue(queuedRequest.id);
+      
+        await this.withdrawalAuditService.append({
+          withdrawRequestId: queuedRequest.id,
+          walletId: wallet.id,
+          userId,
+          eventType: "QUEUED",
+          actorType: "SYSTEM",
+          message: "Withdraw request enqueued for KMS execution",
+          data: {
+            queueId: queue.id,
+            queueStatus: queue.status,
+          },
+        });
+      
+        return {
+          mode: "KMS",
+          message: "Withdraw request queued. Worker execution will process it.",
+          withdrawRequest: queuedRequest,
+          queue,
+        };
+      }
 
         case "BACKEND_SEC": {
           const queuedRequest = await this.prisma.withdrawRequest.create({
@@ -458,5 +513,15 @@ export class WalletService {
         createdAt: true,
       },
     });
+  }
+
+  async getKmsInfo() {
+    const address = await this.kmsService.getAddress();
+    const balanceWei = await this.kmsService.getBalance();
+  
+    return {
+      address,
+      balanceWei: balanceWei.toString(),
+    };
   }
 }

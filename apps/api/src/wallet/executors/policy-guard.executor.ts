@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Contract } from "ethers";
 import { SignerService } from "../signer.service";
+import { ExecutorResult } from "./executor.types";
 
 @Injectable()
 export class PolicyGuardExecutor {
@@ -12,10 +13,9 @@ export class PolicyGuardExecutor {
     contractAddress: string;
     toAddress: string;
     amountWei: bigint;
-  }) {
+  }): Promise<ExecutorResult> {
     const signer = this.signerService.getSigner();
 
-    // 최소 ABI
     const abi = [
       "function withdraw(address to, uint256 amount) external",
     ];
@@ -30,6 +30,7 @@ export class PolicyGuardExecutor {
     );
 
     return {
+      type: "ONCHAIN_TX",
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber ?? null,
       receipt,

@@ -77,4 +77,9 @@ getWhitelist(@Req() req: any, @Param("id") id: string) {
   return this.walletService.getWhitelist(req.user.sub, id);
 }
 
+@Get("kms/info")
+getKmsInfo() {
+  return this.walletService.getKmsInfo();
+}
+
 }

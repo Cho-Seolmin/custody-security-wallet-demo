@@ -20,12 +20,15 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1020.0",
+    "@aws-sdk/credential-providers": "^3.1020.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.19.2",
+    "asn1.js": "^5.4.1",
     "bcrypt": "^6.0.0",
     "ethers": "^6.16.0",
     "passport": "^0.7.0",

@@ -1,4 +1,3 @@
-// src/wallet/withdrawal-worker.service.ts
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "./queue.service";
@@ -58,7 +57,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
       if (
         withdrawRequest.wallet.walletType !== "BACKEND_SEC" &&
         withdrawRequest.wallet.walletType !== "MULTISIG" &&
-        withdrawRequest.wallet.walletType !== "POLICY_GUARD"
+        withdrawRequest.wallet.walletType !== "POLICY_GUARD" &&
+        withdrawRequest.wallet.walletType !== "KMS" &&
+        withdrawRequest.wallet.walletType !== "MPC"
       ) {
         await this.queueService.markDead(job.id, {
           errorCode: "UNSUPPORTED_WALLET_TYPE",
@@ -121,36 +122,74 @@ export class WithdrawalWorkerService implements OnModuleInit {
           amountWei,
         });
 
-        await this.prisma.withdrawRequest.update({
-          where: { id: withdrawRequest.id },
-          data: {
-            txHash: result.txHash,
-            status: "EXECUTED",
-            broadcastedAt: new Date(),
-            confirmedAt: new Date(),
-            finalizedAt: new Date(),
-          },
-        });
+        if (result.type === "ONCHAIN_TX") {
+          await this.prisma.withdrawRequest.update({
+            where: { id: withdrawRequest.id },
+            data: {
+              txHash: result.txHash,
+              status: "EXECUTED",
+              broadcastedAt: new Date(),
+              confirmedAt: new Date(),
+              finalizedAt: new Date(),
+              failureReason: null,
+            },
+          });
 
-        await this.queueService.markSucceeded(job.id);
+          await this.queueService.markSucceeded(job.id);
 
-        await this.withdrawalAuditService.append({
-          withdrawRequestId: withdrawRequest.id,
-          walletId: withdrawRequest.walletId,
-          userId: withdrawRequest.wallet.userId,
-          eventType: "TX_CONFIRMED",
-          actorType: "SIGNER",
-          message: "Transaction executed via ExecutionRouter",
-          data: {
-            txHash: result.txHash,
-            blockNumber: result.blockNumber ?? null,
-            walletType: withdrawRequest.wallet.walletType,
-          },
-        });
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: withdrawRequest.id,
+            walletId: withdrawRequest.walletId,
+            userId: withdrawRequest.wallet.userId,
+            eventType: "TX_CONFIRMED",
+            actorType: "SIGNER",
+            message: "Transaction executed via ExecutionRouter",
+            data: {
+              txHash: result.txHash,
+              blockNumber: result.blockNumber ?? null,
+              walletType: withdrawRequest.wallet.walletType,
+            },
+          });
 
-        this.logger.log(
-          `Withdraw executed: requestId=${withdrawRequest.id}, txHash=${result.txHash}`,
-        );
+          this.logger.log(
+            `Withdraw executed: requestId=${withdrawRequest.id}, txHash=${result.txHash}`,
+          );
+        } else if (result.type === "EXTERNAL_PENDING") {
+          await this.prisma.withdrawRequest.update({
+            where: { id: withdrawRequest.id },
+            data: {
+              status: "PROCESSING",
+              failureReason: null,
+              metadata: {
+                ...(withdrawRequest.metadata as Record<string, any> | null),
+                externalRequestId: result.externalRequestId,
+                externalProvider: result.provider,
+              },
+            },
+          });
+
+          await this.queueService.markSucceeded(job.id);
+
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: withdrawRequest.id,
+            walletId: withdrawRequest.walletId,
+            userId: withdrawRequest.wallet.userId,
+            eventType: "EXECUTION_STARTED",
+            actorType: "SYSTEM",
+            message: "External execution submitted and awaiting confirmation",
+            data: {
+              externalRequestId: result.externalRequestId,
+              provider: result.provider,
+              walletType: withdrawRequest.wallet.walletType,
+            },
+          });
+
+          this.logger.log(
+            `External execution pending: requestId=${withdrawRequest.id}, externalRequestId=${result.externalRequestId}, provider=${result.provider}`,
+          );
+        } else {
+          throw new Error("Unknown execution result type");
+        }
       } catch (error: any) {
         const nextRetryCount = (withdrawRequest.retryCount ?? 0) + 1;
         const errorMessage = error?.message || "Execution failed";

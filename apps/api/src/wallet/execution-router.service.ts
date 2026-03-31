@@ -2,12 +2,14 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { WalletType } from "@prisma/client";
 import { BackendSecExecutor } from "./executors/backend-sec.executor";
 import { PolicyGuardExecutor } from "./executors/policy-guard.executor";
+import { KmsExecutor } from "./executors/Kms.executor";
 
 @Injectable()
 export class ExecutionRouterService {
   constructor(
     private readonly backendSecExecutor: BackendSecExecutor,
     private readonly policyGuardExecutor: PolicyGuardExecutor,
+    private readonly kmsExecutor: KmsExecutor, 
   ) {}
 
   async execute(params: {
@@ -22,7 +24,7 @@ export class ExecutionRouterService {
           toAddress: params.toAddress,
           amountWei: params.amountWei,
         });
-
+  
       case "POLICY_GUARD": {
         const contractAddress = process.env.POLICY_GUARD_CONTRACT_ADDRESS;
         if (!contractAddress) {
@@ -30,14 +32,19 @@ export class ExecutionRouterService {
             "POLICY_GUARD_CONTRACT_ADDRESS is missing in .env",
           );
         }
-
+  
         return this.policyGuardExecutor.execute({
           contractAddress,
           toAddress: params.toAddress,
           amountWei: params.amountWei,
         });
       }
-
+      case "KMS":
+        return this.kmsExecutor.execute({
+          toAddress: params.toAddress,
+          amountWei: params.amountWei,
+      });
+  
       default:
         throw new BadRequestException(
           `Unsupported wallet type for execution: ${params.walletType}`,
