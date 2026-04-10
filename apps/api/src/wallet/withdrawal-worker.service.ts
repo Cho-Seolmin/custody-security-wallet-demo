@@ -148,8 +148,32 @@ export class WithdrawalWorkerService implements OnModuleInit {
               txHash: result.txHash,
               blockNumber: result.blockNumber ?? null,
               walletType: withdrawRequest.wallet.walletType,
+              signerType:
+                withdrawRequest.wallet.walletType === "KMS"
+                  ? "AWS_KMS"
+                  : "LOCAL_SIGNER",
             },
           });
+
+          if (withdrawRequest.wallet.walletType === "KMS") {
+            await this.withdrawalAuditService.append({
+              withdrawRequestId: withdrawRequest.id,
+              walletId: withdrawRequest.walletId,
+              userId: withdrawRequest.wallet.userId,
+              eventType: "KMS_BROADCASTED",
+              actorType: "SIGNER",
+              message: "Transaction broadcasted via AWS KMS signer",
+              data: {
+                txHash: result.txHash,
+                blockNumber: result.blockNumber ?? null,
+                walletType: withdrawRequest.wallet.walletType,
+                signerType:
+                  withdrawRequest.wallet.walletType === "KMS"
+                    ? "AWS_KMS"
+                    : "LOCAL_SIGNER",
+              },
+            });
+          }
 
           this.logger.log(
             `Withdraw executed: requestId=${withdrawRequest.id}, txHash=${result.txHash}`,
@@ -164,6 +188,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
                 ...(withdrawRequest.metadata as Record<string, any> | null),
                 externalRequestId: result.externalRequestId,
                 externalProvider: result.provider,
+                externalStatus: "PENDING",
+                externalSubmittedAt: new Date().toISOString(),
+              
               },
             },
           });
@@ -181,6 +208,8 @@ export class WithdrawalWorkerService implements OnModuleInit {
               externalRequestId: result.externalRequestId,
               provider: result.provider,
               walletType: withdrawRequest.wallet.walletType,
+              externalStatus: "PENDING",
+
             },
           });
 

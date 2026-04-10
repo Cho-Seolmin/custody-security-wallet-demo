@@ -13,6 +13,9 @@ import { BackendSecExecutor } from "./executors/backend-sec.executor";
 import { PolicyGuardExecutor } from "./executors/policy-guard.executor";
 import { KmsExecutor } from "./executors/Kms.executor";
 import { KmsService } from "./kms.service";
+import { MpcExecutor } from "./executors/mpc.executor";
+import { MpcService } from "./mpc.service";
+import { MpcSettlementService } from "./mpc-settlement.service";
 
 
 @Module({
@@ -31,6 +34,9 @@ import { KmsService } from "./kms.service";
     BackendSecExecutor,
     PolicyGuardExecutor,
     KmsExecutor,
+    MpcService,
+    MpcExecutor,
+    MpcSettlementService,
   ],
 })
 export class WalletModule {}

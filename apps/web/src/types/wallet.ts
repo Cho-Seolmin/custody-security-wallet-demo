@@ -3,6 +3,9 @@ export type Wallet = {
     walletType: string;
     address: string;
     createdAt: string;
+    resolvedAddress?: string;
+    addressSource?: string;
+  
   };
   
   export type WalletBalance = {

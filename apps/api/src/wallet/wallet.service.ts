@@ -13,6 +13,7 @@ import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { QueueService } from "./queue.service";
 import { isAddress } from "ethers";
 import { KmsService} from "./kms.service";
+import { MpcService} from "./mpc.service";
 
 @Injectable()
 export class WalletService {
@@ -23,6 +24,7 @@ export class WalletService {
     private withdrawalAuditService: WithdrawalAuditService,
     private queueService: QueueService,
     private kmsService: KmsService,
+    private mpcService: MpcService,
   ) {}
 
   async create(userId: string, dto: CreateWalletDto) {
@@ -68,6 +70,14 @@ export class WalletService {
             addressSource: "BACKEND_SIGNER",
           };
         }
+        if (wallet.walletType === "MPC") {
+          const resolvedAddress = await this.mpcService.getWalletAddress();
+          return {
+            ...wallet,
+            resolvedAddress,
+            addressSource: "DFNS_WALLET",
+          };
+        }
   
         return {
           ...wallet,
@@ -108,6 +118,18 @@ export class WalletService {
           address: kmsAddress,
           balanceWei: balanceWei.toString(),
           source: "KMS_ADDRESS",
+        };
+      }
+
+      if (wallet.walletType === "MPC") {
+        const mpcAddress = await this.mpcService.getWalletAddress();
+        const balanceWei = await this.mpcService.getBalance();
+      
+        return {
+          walletId: wallet.id,
+          address: mpcAddress,
+          balanceWei: balanceWei.toString(),
+          source: "DFNS_WALLET",
         };
       }
   
@@ -438,6 +460,70 @@ export class WalletService {
           };
         }
 
+        case "MPC": {
+          const queuedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+              executionType: "MPC",
+              queuedAt: new Date(),
+            },
+            select: {
+              id: true,
+              walletId: true,
+              amount: true,
+              toAddress: true,
+              status: true,
+              createdAt: true,
+              approvedBy: true,
+              txHash: true,
+            },
+          });
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "REQUEST_CREATED",
+            actorType: "USER",
+            actorId: userId,
+            message: "MPC withdraw request created",
+            data: {
+              walletType: wallet.walletType,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+            },
+          });
+        
+          const queue = await this.queueService.enqueue(queuedRequest.id);
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "QUEUED",
+            actorType: "SYSTEM",
+            message: "Withdraw request enqueued for MPC execution",
+            data: {
+              queueId: queue.id,
+              queueStatus: queue.status,
+            },
+          });
+        
+          return {
+            mode: "MPC",
+            message: "Withdraw request queued. Worker execution will process it.",
+            withdrawRequest: queuedRequest,
+            queue,
+          };
+        }
+
+
+
+
       default:
         throw new BadRequestException("Unsupported wallet type");
     }
@@ -471,7 +557,6 @@ export class WalletService {
       orderBy: { address: "asc" },
     });
   }
-
   async getWithdrawHistory(
     userId: string,
     walletId: string,
@@ -480,16 +565,16 @@ export class WalletService {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
     });
-
+  
     if (!wallet) {
       throw new NotFoundException("Wallet not found");
     }
-
+  
     if (wallet.userId !== userId) {
       throw new ForbiddenException("Not your wallet");
     }
-
-    return this.prisma.withdrawRequest.findMany({
+  
+    const rows = await this.prisma.withdrawRequest.findMany({
       where: {
         walletId,
         ...(status ? { status } : {}),
@@ -509,9 +594,25 @@ export class WalletService {
         failureReason: true,
         queuedAt: true,
         processingAt: true,
+        broadcastedAt: true,
         confirmedAt: true,
+        finalizedAt: true,
         createdAt: true,
+        metadata: true,
       },
+    });
+  
+    return rows.map((row) => {
+      const metadata = (row.metadata as Record<string, any> | null) ?? {};
+  
+      return {
+        ...row,
+        externalProvider: metadata.externalProvider ?? null,
+        externalRequestId: metadata.externalRequestId ?? null,
+        externalStatus: metadata.externalStatus ?? null,
+        externalTxHash: metadata.externalTxHash ?? null,
+        metadata,
+      };
     });
   }
 

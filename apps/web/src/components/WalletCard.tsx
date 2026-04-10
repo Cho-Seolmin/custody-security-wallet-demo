@@ -160,6 +160,8 @@ export default function WalletCard({ wallet }: Props) {
     setMessage("");
   };
 
+  const displayAddress = wallet.resolvedAddress ?? wallet.address;
+
   return (
     <div
       style={{
@@ -171,14 +173,26 @@ export default function WalletCard({ wallet }: Props) {
     >
       <h3>{wallet.walletType}</h3>
       <div style={{ marginTop: "8px" }}>
-        주소: {shortenAddress(wallet.address)}
+        주소: {shortenAddress(displayAddress)}
         <button
-          onClick={() => copy(wallet.address)}
+          onClick={() => copy(displayAddress)}
           style={{ marginLeft: "8px" }}
         >
           복사
         </button>
+
+        {wallet.address !== wallet.resolvedAddress && (
+          <div style={{ fontSize: "12px", color: "gray", marginTop: "4px" }}>
+            DB 주소: {shortenAddress(wallet.address)}
+          </div>
+        )}
+
+        <div style={{ fontSize: "12px", color: "gray" }}>
+          source: {wallet.addressSource}
+        </div>
       </div>
+
+
       <div>ID: {wallet.id}</div>
 
       <div style={{ marginTop: "12px" }}>

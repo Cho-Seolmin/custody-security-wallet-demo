@@ -3,6 +3,7 @@ import { WalletType } from "@prisma/client";
 import { BackendSecExecutor } from "./executors/backend-sec.executor";
 import { PolicyGuardExecutor } from "./executors/policy-guard.executor";
 import { KmsExecutor } from "./executors/Kms.executor";
+import { MpcExecutor } from "./executors/mpc.executor";
 
 @Injectable()
 export class ExecutionRouterService {
@@ -10,6 +11,7 @@ export class ExecutionRouterService {
     private readonly backendSecExecutor: BackendSecExecutor,
     private readonly policyGuardExecutor: PolicyGuardExecutor,
     private readonly kmsExecutor: KmsExecutor, 
+    private readonly mpcExecutor: MpcExecutor,
   ) {}
 
   async execute(params: {
@@ -41,6 +43,11 @@ export class ExecutionRouterService {
       }
       case "KMS":
         return this.kmsExecutor.execute({
+          toAddress: params.toAddress,
+          amountWei: params.amountWei,
+      });
+      case "MPC":
+        return this.mpcExecutor.execute({
           toAddress: params.toAddress,
           amountWei: params.amountWei,
       });

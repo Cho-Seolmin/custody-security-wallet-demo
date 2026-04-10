@@ -43,6 +43,7 @@ export class KmsService {
   private readonly kms: KMSClient;
   private readonly provider: JsonRpcProvider;
   private readonly keyId: string;
+  private isSending = false;
   private static readonly SECP256K1_N =
   BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
 
@@ -149,6 +150,14 @@ private async findMatchingYParity(
     to: string,
     amountWei: bigint,
   ): Promise<TransactionResponse> {
+    if (this.isSending) {
+      throw new Error(
+        "KMS_NONCE_ERROR: KMS signer is busy processing another transaction.",
+      );
+    }
+  
+    this.isSending = true;
+  
     try {
       const from = await this.getAddress();
   
@@ -164,7 +173,7 @@ private async findMatchingYParity(
         feeData.maxPriorityFeePerGas ?? parseUnits("2", "gwei");
   
       const maxFeePerGas =
-        feeData.maxFeePerGas ?? (maxPriorityFeePerGas * 2n);
+        feeData.maxFeePerGas ?? maxPriorityFeePerGas * 2n;
   
       const tx = Transaction.from({
         type: 2,
@@ -190,7 +199,7 @@ private async findMatchingYParity(
       );
   
       if (!signRes.Signature) {
-        throw new Error("KMS Sign returned empty signature");
+        throw new Error("KMS_SIGN_EMPTY: KMS Sign returned empty signature");
       }
   
       const parsed = this.parseDerSignature(signRes.Signature);
@@ -223,26 +232,38 @@ private async findMatchingYParity(
       const message = error?.message || "";
   
       if (message.includes("AccessDeniedException")) {
-        throw new Error("AWS KMS access denied. Check IAM permissions and KMS key policy.");
+        throw new Error(
+          "KMS_ACCESS_DENIED: AWS KMS access denied. Check IAM permissions and KMS key policy.",
+        );
       }
   
       if (message.includes("KMSInvalidStateException")) {
-        throw new Error("AWS KMS key is not in a valid state.");
+        throw new Error(
+          "KMS_INVALID_STATE: AWS KMS key is not in a valid state.",
+        );
       }
   
       if (message.includes("invalid sender")) {
-        throw new Error("Invalid sender. KMS signature recovery may have failed.");
+        throw new Error(
+          "KMS_INVALID_SENDER: Invalid sender. KMS signature recovery may have failed.",
+        );
       }
   
       if (message.includes("insufficient funds")) {
-        throw new Error("KMS wallet has insufficient ETH for amount + gas.");
+        throw new Error(
+          "KMS_INSUFFICIENT_FUNDS: KMS wallet has insufficient ETH for amount + gas.",
+        );
       }
   
       if (message.includes("nonce")) {
-        throw new Error("Nonce issue detected while sending KMS transaction.");
+        throw new Error(
+          "KMS_NONCE_ERROR: Nonce issue detected while sending KMS transaction.",
+        );
       }
   
-      throw new Error(`KMS transaction failed: ${message}`);
+      throw new Error(`KMS_TX_FAILED: ${message}`);
+    } finally {
+      this.isSending = false;
     }
   }
  
