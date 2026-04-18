@@ -59,7 +59,8 @@ export class WithdrawalWorkerService implements OnModuleInit {
         withdrawRequest.wallet.walletType !== "MULTISIG" &&
         withdrawRequest.wallet.walletType !== "POLICY_GUARD" &&
         withdrawRequest.wallet.walletType !== "KMS" &&
-        withdrawRequest.wallet.walletType !== "MPC"
+        withdrawRequest.wallet.walletType !== "MPC" &&
+        withdrawRequest.wallet.walletType !== "SSS"
       ) {
         await this.queueService.markDead(job.id, {
           errorCode: "UNSUPPORTED_WALLET_TYPE",
@@ -118,6 +119,8 @@ export class WithdrawalWorkerService implements OnModuleInit {
 
         const result = await this.executionRouterService.execute({
           walletType: withdrawRequest.wallet.walletType,
+          walletId: withdrawRequest.walletId,
+          withdrawRequestId: withdrawRequest.id,
           toAddress: withdrawRequest.toAddress,
           amountWei,
         });

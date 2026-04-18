@@ -12,6 +12,11 @@ enum UserRole {
   ADMIN
 }
 
+enum SssUnlockState {
+  LOCKED
+  UNLOCKED_ONCE
+}
+
 enum UserStatus {
   PENDING
   ACTIVE
@@ -178,12 +183,14 @@ model AdminApproval {
 }
 
 model WalletSecurityState {
-  walletId        String    @id
-  isFrozen        Boolean   @default(false)
-  withdrawPaused  Boolean   @default(false)
-  cooldownSeconds Int       @default(0)
-  lastWithdrawAt  DateTime?
-  updatedAt       DateTime  @updatedAt
+  walletId             String          @id
+  isFrozen             Boolean         @default(false)
+  withdrawPaused       Boolean         @default(false)
+  cooldownSeconds      Int             @default(0)
+  lastWithdrawAt       DateTime?
+  sssUnlockState       SssUnlockState  @default(LOCKED)
+  sssUnlockExpiresAt   DateTime?
+  updatedAt            DateTime        @updatedAt
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }

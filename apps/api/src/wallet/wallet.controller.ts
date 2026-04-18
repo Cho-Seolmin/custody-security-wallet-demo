@@ -6,6 +6,7 @@ import { Patch } from "@nestjs/common";
 import { UpdateLimitsDto } from "./dto/update-limits.dto";
 import { UpdateWhitelistDto } from "./dto/update-whitelist.dto";
 import { WithdrawDto } from "./dto/withdraw.dto";
+import { UnlockSssDto } from "./dto/unlock-sss.dto";
 
 @Controller("wallets")
 export class WalletController {
@@ -80,6 +81,16 @@ getWhitelist(@Req() req: any, @Param("id") id: string) {
 @Get("kms/info")
 getKmsInfo() {
   return this.walletService.getKmsInfo();
+}
+
+@Post(":id/sss/unlock")
+@UseGuards(JwtAuthGuard)
+unlockSss(
+  @Req() req: any,
+  @Param("id") id: string,
+  @Body() dto: UnlockSssDto,
+) {
+  return this.walletService.unlockSss(req.user.sub, id, dto);
 }
 
 }

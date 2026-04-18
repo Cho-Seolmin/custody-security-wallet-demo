@@ -1,4 +1,3 @@
-// src/wallet/signer.service.ts
 import { Injectable } from "@nestjs/common";
 import { JsonRpcProvider, TransactionResponse, Wallet } from "ethers";
 

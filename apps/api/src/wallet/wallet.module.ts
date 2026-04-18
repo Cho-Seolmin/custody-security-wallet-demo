@@ -15,6 +15,8 @@ import { KmsExecutor } from "./executors/Kms.executor";
 import { KmsService } from "./kms.service";
 import { MpcExecutor } from "./executors/mpc.executor";
 import { MpcService } from "./mpc.service";
+import { SssExecutor } from "./executors/sss.executor";
+import { SssUnlockStoreService } from "./sss-unlock-store.service";
 import { MpcSettlementService } from "./mpc-settlement.service";
 
 
@@ -37,6 +39,8 @@ import { MpcSettlementService } from "./mpc-settlement.service";
     MpcService,
     MpcExecutor,
     MpcSettlementService,
+    SssUnlockStoreService,
+    SssExecutor,
   ],
 })
 export class WalletModule {}

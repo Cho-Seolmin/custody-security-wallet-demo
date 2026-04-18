@@ -11,9 +11,10 @@ import { SignerService } from "./signer.service";
 import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { QueueService } from "./queue.service";
-import { isAddress } from "ethers";
+import { isAddress, Wallet  } from "ethers";
 import { KmsService} from "./kms.service";
 import { MpcService} from "./mpc.service";
+import { SssUnlockStoreService } from "./sss-unlock-store.service";
 
 @Injectable()
 export class WalletService {
@@ -25,23 +26,41 @@ export class WalletService {
     private queueService: QueueService,
     private kmsService: KmsService,
     private mpcService: MpcService,
+    private sssUnlockStore: SssUnlockStoreService,
   ) {}
 
   async create(userId: string, dto: CreateWalletDto) {
     const exists = await this.prisma.wallet.findFirst({
       where: { userId, walletType: dto.walletType },
     });
-
+  
     if (exists) {
       throw new BadRequestException("Wallet already exists for this type");
     }
-
-    const address = "0x" + randomBytes(20).toString("hex");
-
-    return this.prisma.wallet.create({
-      data: { userId, walletType: dto.walletType, address },
-      select: { id: true, walletType: true, address: true, createdAt: true },
-    });
+  
+    let address: string;
+  
+    if (dto.walletType === "SSS") {
+      const sssWallet = Wallet.createRandom();
+      address = sssWallet.address;
+    
+      const created = await this.prisma.wallet.create({
+        data: { userId, walletType: dto.walletType, address },
+        select: { id: true, walletType: true, address: true, createdAt: true },
+      });
+    
+      return {
+        ...created,
+        privateKey: sssWallet.privateKey, 
+      };
+    } else {
+      address = "0x" + randomBytes(20).toString("hex");
+    
+      return this.prisma.wallet.create({
+        data: { userId, walletType: dto.walletType, address },
+        select: { id: true, walletType: true, address: true, createdAt: true },
+      });
+    }
   }
 
   async list(userId: string) {
@@ -521,8 +540,94 @@ export class WalletService {
           };
         }
 
-
-
+        case "SSS": {
+          const securityState = await this.prisma.walletSecurityState.findUnique({
+            where: { walletId: wallet.id },
+          });
+        
+          if (
+            !securityState ||
+            securityState.sssUnlockState !== "UNLOCKED_ONCE" ||
+            (securityState.sssUnlockExpiresAt &&
+              securityState.sssUnlockExpiresAt.getTime() < Date.now())
+          ) {
+            throw new BadRequestException("SSS wallet is locked. Unlock required.");
+          }
+        
+          const queuedRequest = await this.prisma.withdrawRequest.create({
+            data: {
+              walletId: wallet.id,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+              executionType: "SSS",
+              queuedAt: new Date(),
+            },
+            select: {
+              id: true,
+              walletId: true,
+              amount: true,
+              toAddress: true,
+              status: true,
+              createdAt: true,
+              approvedBy: true,
+              txHash: true,
+            },
+          });
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "REQUEST_CREATED",
+            actorType: "USER",
+            actorId: userId,
+            message: "SSS withdraw request created",
+            data: {
+              walletType: wallet.walletType,
+              amount: dto.amount,
+              toAddress: dto.toAddress,
+              status: "QUEUED",
+            },
+          });
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "SSS_UNLOCKED_ONCE",
+            actorType: "USER",
+            actorId: userId,
+            message: "SSS wallet already unlocked and ready for one-time withdrawal",
+            data: {
+              walletType: wallet.walletType,
+              sssUnlockState: securityState.sssUnlockState,
+              sssUnlockExpiresAt: securityState.sssUnlockExpiresAt,
+            },
+          });
+        
+          const queue = await this.queueService.enqueue(queuedRequest.id);
+        
+          await this.withdrawalAuditService.append({
+            withdrawRequestId: queuedRequest.id,
+            walletId: wallet.id,
+            userId,
+            eventType: "QUEUED",
+            actorType: "SYSTEM",
+            message: "Withdraw request enqueued for SSS execution",
+            data: {
+              queueId: queue.id,
+              queueStatus: queue.status,
+            },
+          });
+        
+          return {
+            mode: "SSS",
+            message: "Withdraw request queued. Worker execution will process it.",
+            withdrawRequest: queuedRequest,
+            queue,
+          };
+        }
 
       default:
         throw new BadRequestException("Unsupported wallet type");
@@ -623,6 +728,59 @@ export class WalletService {
     return {
       address,
       balanceWei: balanceWei.toString(),
+    };
+  }
+
+  async unlockSss(
+    userId: string,
+    walletId: string,
+    dto: { privateKey: string }
+  ) {
+    const wallet = await this.prisma.wallet.findUnique({
+      where: { id: walletId },
+      include: { securityState: true },
+    });
+  
+    if (!wallet) throw new NotFoundException("Wallet not found");
+    if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
+  
+    if (wallet.walletType !== "SSS") {
+      throw new BadRequestException("Not an SSS wallet");
+    }
+  
+    // 🔐 private key → address 검증
+    let derivedAddress: string;
+  
+    try {
+      const walletObj = new Wallet(dto.privateKey);
+      derivedAddress = await walletObj.getAddress();
+    } catch {
+      throw new BadRequestException("Invalid private key");
+    }
+  
+    if (derivedAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+      throw new BadRequestException("Private key does not match wallet address");
+    }
+  
+    // 상태 upsert
+    await this.prisma.walletSecurityState.upsert({
+      where: { walletId },
+      update: {
+        sssUnlockState: "UNLOCKED_ONCE",
+        sssUnlockExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      },
+      create: {
+        walletId,
+        sssUnlockState: "UNLOCKED_ONCE",
+        sssUnlockExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      },
+    });
+  
+    // 메모리에 key 저장
+    this.sssUnlockStore.set(walletId, dto.privateKey);
+  
+    return {
+      message: "SSS wallet unlocked (1 transaction allowed)",
     };
   }
 }
