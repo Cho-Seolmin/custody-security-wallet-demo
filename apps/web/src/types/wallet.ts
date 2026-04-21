@@ -23,3 +23,10 @@ export type Wallet = {
     txHash: string | null;
     createdAt: string;
   };
+
+  export type SssStatus = {
+    walletId: string;
+    walletType: string;
+    unlockState: "LOCKED" | "UNLOCKED_ONCE";
+    unlockExpiresAt: string | null;
+  };

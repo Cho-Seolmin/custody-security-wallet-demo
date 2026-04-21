@@ -15,6 +15,7 @@ import { isAddress, Wallet  } from "ethers";
 import { KmsService} from "./kms.service";
 import { MpcService} from "./mpc.service";
 import { SssUnlockStoreService } from "./sss-unlock-store.service";
+import * as sss from "shamirs-secret-sharing";
 
 @Injectable()
 export class WalletService {
@@ -44,6 +45,12 @@ export class WalletService {
       const sssWallet = Wallet.createRandom();
       address = sssWallet.address;
     
+      const secret = Buffer.from(sssWallet.privateKey.slice(2), "hex");
+    
+      const shares = sss.split(secret, { shares: 5, threshold: 3 });
+    
+      const shareStrings = shares.map((share) => share.toString("hex"));
+    
       const created = await this.prisma.wallet.create({
         data: { userId, walletType: dto.walletType, address },
         select: { id: true, walletType: true, address: true, createdAt: true },
@@ -51,15 +58,8 @@ export class WalletService {
     
       return {
         ...created,
-        privateKey: sssWallet.privateKey, 
+        shares: shareStrings, 
       };
-    } else {
-      address = "0x" + randomBytes(20).toString("hex");
-    
-      return this.prisma.wallet.create({
-        data: { userId, walletType: dto.walletType, address },
-        select: { id: true, walletType: true, address: true, createdAt: true },
-      });
     }
   }
 
@@ -781,6 +781,36 @@ export class WalletService {
   
     return {
       message: "SSS wallet unlocked (1 transaction allowed)",
+    };
+  }
+
+  async getSssStatus(userId: string, walletId: string) {
+    const wallet = await this.prisma.wallet.findUnique({
+      where: { id: walletId },
+      include: { securityState: true },
+    });
+  
+    if (!wallet) throw new NotFoundException("Wallet not found");
+    if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
+    if (wallet.walletType !== "SSS") {
+      throw new BadRequestException("Not an SSS wallet");
+    }
+  
+    const state = wallet.securityState;
+  
+    const unlockState = state?.sssUnlockState ?? "LOCKED";
+    const unlockExpiresAt = state?.sssUnlockExpiresAt ?? null;
+  
+    const isUnlocked =
+      unlockState === "UNLOCKED_ONCE" &&
+      !!unlockExpiresAt &&
+      unlockExpiresAt.getTime() > Date.now();
+  
+    return {
+      walletId: wallet.id,
+      walletType: wallet.walletType,
+      unlockState: isUnlocked ? "UNLOCKED_ONCE" : "LOCKED",
+      unlockExpiresAt: isUnlocked ? unlockExpiresAt : null,
     };
   }
 }

@@ -93,4 +93,10 @@ unlockSss(
   return this.walletService.unlockSss(req.user.sub, id, dto);
 }
 
+@Get(":id/sss/status")
+@UseGuards(JwtAuthGuard)
+getSssStatus(@Req() req: any, @Param("id") id: string) {
+  return this.walletService.getSssStatus(req.user.sub, id);
+}
+
 }

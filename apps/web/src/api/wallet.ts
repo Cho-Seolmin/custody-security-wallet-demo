@@ -46,3 +46,16 @@ export async function getWalletWhitelist(walletId: string) {
   const res = await api.get(`/wallets/${walletId}/whitelist`);
   return res.data;
 }
+
+export async function getSssStatus(walletId: string) {
+  const res = await api.get(`/wallets/${walletId}/sss/status`);
+  return res.data;
+}
+
+export async function unlockSssWallet(
+  walletId: string,
+  payload: { privateKey: string }
+) {
+  const res = await api.post(`/wallets/${walletId}/sss/unlock`, payload);
+  return res.data;
+}

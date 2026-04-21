@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, } from "../api/wallet";
-import type { Wallet, WalletBalance, WithdrawItem } from "../types/wallet";
+import {  useEffect, useState } from "react";
+import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, getSssStatus, unlockSssWallet, } from "../api/wallet";
+import type { Wallet, WalletBalance, WithdrawItem, SssStatus, } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
 import { formatEther, isAddress  } from "ethers";
 import { shortenAddress } from "../utils/address";
@@ -20,6 +20,10 @@ export default function WalletCard({ wallet }: Props) {
 
   const [whitelistInput, setWhitelistInput] = useState("");
   const [whitelistAddresses, setWhitelistAddresses] = useState<string[]>([]);
+
+  const [sssStatus, setSssStatus] = useState<SssStatus | null>(null);
+  const [sssPrivateKey, setSssPrivateKey] = useState("");
+  const [sssLoading, setSssLoading] = useState(false);
 
   const copy = async (text: string) => {
     try {
@@ -136,6 +140,54 @@ export default function WalletCard({ wallet }: Props) {
       }
     }
   };
+
+  const handleLoadSssStatus = async () => {
+    try {
+      setMessage("");
+      const data = await getSssStatus(wallet.id);
+      setSssStatus(data);
+    } catch (err: any) {
+      const data = err?.response?.data;
+      if (typeof data?.message === "string") {
+        setMessage(data.message);
+      } else {
+        setMessage("SSS 상태 조회 실패");
+      }
+    }
+  };
+  
+  const handleUnlockSss = async () => {
+    try {
+      if (!sssPrivateKey.trim()) {
+        setMessage("프라이빗 키를 입력하세요.");
+        return;
+      }
+  
+      setMessage("");
+      setSssLoading(true);
+  
+      const data = await unlockSssWallet(wallet.id, {
+        privateKey: sssPrivateKey.trim(),
+      });
+  
+      setMessage(data.message || "SSS unlock 성공");
+      setSssPrivateKey("");
+  
+      const status = await getSssStatus(wallet.id);
+      setSssStatus(status);
+    } catch (err: any) {
+      const data = err?.response?.data;
+      if (typeof data?.message === "string") {
+        setMessage(data.message);
+      } else {
+        setMessage("SSS unlock 실패");
+      }
+    } finally {
+      setSssLoading(false);
+    }
+  };
+
+
   
   const handleAddWhitelistAddress = () => {
     const normalized = whitelistInput.trim().toLowerCase();
@@ -159,6 +211,12 @@ export default function WalletCard({ wallet }: Props) {
     setWhitelistInput("");
     setMessage("");
   };
+
+  useEffect(() => {
+    if (wallet.walletType === "SSS") {
+      handleLoadSssStatus();
+    }
+  }, [wallet.id, wallet.walletType]);
 
   const displayAddress = wallet.resolvedAddress ?? wallet.address;
 
@@ -266,6 +324,49 @@ export default function WalletCard({ wallet }: Props) {
   </div>
 )}
 
+{wallet.walletType === "SSS" && (
+  <div style={{ marginTop: "16px" }}>
+    <h4>SSS Unlock 관리</h4>
+
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: "8px",
+        padding: "12px",
+        marginBottom: "12px",
+        background: "#fafafa",
+      }}
+    >
+      <div>
+        현재 상태:{" "}
+        <strong>
+          {sssStatus?.unlockState === "UNLOCKED_ONCE" ? "UNLOCKED" : "LOCKED"}
+        </strong>
+      </div>
+
+      <div style={{ fontSize: "12px", color: "gray", marginTop: "4px" }}>
+        만료 시간: {sssStatus?.unlockExpiresAt ?? "-"}
+      </div>
+
+      <button onClick={handleLoadSssStatus} style={{ marginTop: "8px" }}>
+        상태 새로고침
+      </button>
+    </div>
+
+    <input
+      type="password"
+      value={sssPrivateKey}
+      onChange={(e) => setSssPrivateKey(e.target.value)}
+      placeholder="복구된 private key 입력"
+      style={{ width: "100%", marginBottom: "8px" }}
+    />
+
+    <button onClick={handleUnlockSss} disabled={sssLoading}>
+      {sssLoading ? "Unlock 중..." : "SSS Unlock"}
+    </button>
+  </div>
+)}
+
       <div style={{ marginTop: "16px" }}>
         <h4>출금 요청</h4>
 
@@ -297,4 +398,5 @@ export default function WalletCard({ wallet }: Props) {
       {showWithdraws && <WithdrawHistory items={withdraws} />}
     </div>
   );
+  
 }
