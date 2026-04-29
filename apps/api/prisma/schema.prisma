@@ -70,7 +70,6 @@ model User {
   role          UserRole   @default(USER)
   status        UserStatus @default(PENDING)
   createdAt     DateTime   @default(now())
-  walletAddress String?
 
   wallets   Wallet[]
   approvals AdminApproval[]

@@ -1,15 +1,9 @@
 import { useState } from "react";
-import { updateMyWalletAddress } from "../api/auth";
 import { shortenAddress } from "../utils/address";
-
-type Props = {
-  savedAddress?: string | null;
-  onSaved?: () => Promise<void> | void;
-};
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7";
 
-export default function WalletConnect({ savedAddress, onSaved }: Props) {
+export default function WalletConnect() {
   const [account, setAccount] = useState("");
   const [chainId, setChainId] = useState("");
   const [error, setError] = useState("");
@@ -52,27 +46,6 @@ export default function WalletConnect({ savedAddress, onSaved }: Props) {
     }
   };
 
-  const handleSave = async () => {
-    try {
-      setError("");
-      setMessage("");
-
-      if (!account) {
-        setError("먼저 MetaMask를 연결해주세요.");
-        return;
-      }
-
-      await updateMyWalletAddress(account);
-      setMessage("지갑 주소가 계정에 저장되었습니다.");
-
-      if (onSaved) {
-        await onSaved();
-      }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "지갑 주소 저장 실패");
-    }
-  };
-
   return (
     <div
       style={{
@@ -97,15 +70,8 @@ export default function WalletConnect({ savedAddress, onSaved }: Props) {
       )}
 
       <p>현재 네트워크: {chainId || "-"}</p>
-      <p>
-        저장된 계정 지갑 주소: {savedAddress ? shortenAddress(account) : "-"}
-        {savedAddress && (
-          <button onClick={() => copy(savedAddress)}>Copy</button>
-        )}
-      </p>
       <div style={{ display: "flex", gap: "8px" }}>
         <button onClick={handleConnect}>지갑 연결</button>
-        <button onClick={handleSave}>현재 주소 저장</button>
       </div>
 
       {message && <p style={{ color: "blue", marginTop: "10px" }}>{message}</p>}

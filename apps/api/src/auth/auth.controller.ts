@@ -32,17 +32,5 @@ export class AuthController {
   getMe(@Req() req: any) {
     return this.auth.getMe(req.user.sub);
   }
-  @Patch("me/wallet-address")
-  @UseGuards(JwtAuthGuard)
-  updateMyWalletAddress(
-    @Req() req: any,
-    @Body() body: { walletAddress: string },
-  ) {
-    if (!body?.walletAddress) {
-      throw new BadRequestException("walletAddress is required");
-    }
-
-    return this.auth.updateMyWalletAddress(req.user.sub, body.walletAddress);
-  }
  
 }

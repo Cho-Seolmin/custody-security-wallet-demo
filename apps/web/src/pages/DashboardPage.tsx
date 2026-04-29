@@ -7,6 +7,7 @@ import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
 import { useNavigate } from "react-router-dom";
 import WalletConnect from "../components/WalletConnect";
+import DepositPanel from "../components/DepositPanel";
 
 export default function DashboardPage() {
   const [me, setMe] = useState<Me | null>(null);
@@ -67,12 +68,8 @@ export default function DashboardPage() {
       <h1>Dashboard</h1>
 
       <button onClick={handleLogout}>로그아웃</button>
-
       <button onClick={handleRefresh}>새로고침</button>
-      
-      <div style={{ marginBottom: "20px" }}>
       <button onClick={() => navigate("/admin")}>관리자 페이지 이동</button>      
-      </div>
 
       {me && (
       <div
@@ -90,21 +87,12 @@ export default function DashboardPage() {
         <p style={{ margin: 0 }}>이메일: {me.email}</p>
         <p style={{ margin: 0 }}>권한: {me.role}</p>
         <p style={{ margin: 0 }}>상태: {me.status}</p>
-        <p style={{ margin: 0 }}>
-          등록된 지갑 주소: {me.walletAddress || "-"}
-        </p>
 
-        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          <button onClick={() => navigate("/admin")}>관리자 페이지 이동</button>
-          <button onClick={handleLogout}>로그아웃</button>
-        </div>
       </div>
     )}
+    <WalletConnect />
 
-    <WalletConnect savedAddress={me?.walletAddress} onSaved={async () => {
-      const meData = await getMe();
-      setMe(meData);
-    }} />
+    <DepositPanel />
 
     <CreateWalletForm wallets={wallets} onCreated={fetchWallets} />
 
