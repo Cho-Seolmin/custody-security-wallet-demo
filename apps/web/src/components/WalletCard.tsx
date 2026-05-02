@@ -218,7 +218,7 @@ export default function WalletCard({ wallet }: Props) {
     }
   }, [wallet.id, wallet.walletType]);
 
-  const displayAddress = wallet.resolvedAddress ?? wallet.address;
+  const displayAddress = balance?.address ?? wallet.address;
 
   return (
     <div
@@ -239,14 +239,14 @@ export default function WalletCard({ wallet }: Props) {
           복사
         </button>
 
-        {wallet.address !== wallet.resolvedAddress && (
+        {balance?.address && wallet.address !== balance.address && (
           <div style={{ fontSize: "12px", color: "gray", marginTop: "4px" }}>
             DB 주소: {shortenAddress(wallet.address)}
           </div>
         )}
 
         <div style={{ fontSize: "12px", color: "gray" }}>
-          source: {wallet.addressSource}
+          source: {balance ? "RUNTIME_RESOLVED" : "DB_ADDRESS"}
         </div>
       </div>
 

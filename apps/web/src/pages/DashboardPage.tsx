@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { getMe } from "../api/auth";
 import { getWallets } from "../api/wallet";
-import CreateWalletForm from "../components/CreateWalletForm";
 import WalletList from "../components/WalletList";
 import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
@@ -94,10 +93,8 @@ export default function DashboardPage() {
 
     <DepositPanel />
 
-    <CreateWalletForm wallets={wallets} onCreated={fetchWallets} />
-
-      <h2>내 지갑 목록</h2>
-      <WalletList wallets={wallets} />
+    <h2>내 지갑 목록</h2>
+    <WalletList wallets={wallets} />
 
       {error && <p style={{ color: "red" }}>{error}</p>}
     </div>

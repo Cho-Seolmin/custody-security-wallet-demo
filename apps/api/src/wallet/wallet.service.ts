@@ -81,7 +81,7 @@ export class WalletService {
           };
         }
   
-        if (wallet.walletType === "BACKEND_SEC") {
+        if (wallet.walletType === "BACKEND_SEC" || wallet.walletType === "MULTISIG") {
           const resolvedAddress = await this.signerService.getSignerAddress();
           return {
             ...wallet,
@@ -116,7 +116,7 @@ export class WalletService {
     if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
   
     try {
-      if (wallet.walletType === "BACKEND_SEC") {
+      if (["BACKEND_SEC", "MULTISIG"].includes(wallet.walletType)) {
         const signerAddress = await this.signerService.getSignerAddress();
         const balanceWei = await this.signerService.getSignerBalance();
   
