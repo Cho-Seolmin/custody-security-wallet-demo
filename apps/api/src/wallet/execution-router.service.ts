@@ -32,10 +32,10 @@ export class ExecutionRouterService {
         });
   
       case "POLICY_GUARD": {
-        const contractAddress = process.env.POLICY_GUARD_CONTRACT_ADDRESS;
+        const contractAddress = process.env.POLICY_VAULT_ADDRESS;
         if (!contractAddress) {
           throw new BadRequestException(
-            "POLICY_GUARD_CONTRACT_ADDRESS is missing in .env",
+            "POLICY_VAULT_ADDRESS is missing in .env",
           );
         }
   

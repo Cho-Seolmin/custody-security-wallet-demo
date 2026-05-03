@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/
 import * as bcrypt from "bcrypt";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
+import { Cron, CronExpression } from "@nestjs/schedule";
 
 type VerifyPayload = { sub: string; email: string; type: "verify-email" };
 
@@ -85,5 +86,23 @@ export class AuthService {
       },
     });
   }
+  
+  @Cron(CronExpression.EVERY_MINUTE)
+async cleanupExpiredPendingUsers() {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+  const result = await this.prisma.user.deleteMany({
+    where: {
+      status: "PENDING",
+      createdAt: {
+        lt: tenMinutesAgo,
+      },
+    },
+  });
+
+  if (result.count > 0) {
+    console.log(`Deleted expired pending users: ${result.count}`);
+  }
+}
 
 }

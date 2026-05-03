@@ -32,7 +32,7 @@ export default function RegisterPage() {
     try {
       const data = await register(email, password);
       setRegisterResult(data);
-      setMessage("회원가입 완료. 이메일 인증을 진행해주세요.");
+      setMessage("회원가입 완료. 인증 링크 열기 버튼을 눌러 가입해주세요. (10분안에 누르지 않을시 회원가입이 실패합니다)");
     } catch (err: any) {
       setError(err?.response?.data?.message || "회원가입 실패");
     }

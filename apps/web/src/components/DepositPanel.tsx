@@ -9,7 +9,17 @@ declare global {
   }
 }
 
-export default function DepositPanel() {
+type Wallet = {
+  id: string;
+  walletType: string;
+  address: string;
+};
+
+type DepositPanelProps = {
+  wallets: Wallet[];
+};
+
+export default function DepositPanel({ wallets }: DepositPanelProps) {
   const [amountEth, setAmountEth] = useState("0.001");
   const [message, setMessage] = useState("");
 
@@ -22,6 +32,11 @@ export default function DepositPanel() {
 
       if (!window.ethereum) {
         setMessage("MetaMask가 필요합니다.");
+        return;
+      }
+
+      if (!targetAddress) {
+        setMessage("입금 주소가 없습니다.");
         return;
       }
 
@@ -69,7 +84,7 @@ export default function DepositPanel() {
         marginBottom: "20px",
       }}
     >
-      <h3>테스트 입금</h3>
+      <h3>테스트 지갑으로의 입금</h3>
 
       <p style={{ color: "#555" }}>
         지갑 테스트를 위한 금액이 부족할 시 입금해주세요.
@@ -87,29 +102,42 @@ export default function DepositPanel() {
         }}
       />
 
-      {Object.entries(DEPOSIT_TARGETS).map(([walletType, target]) => (
-        <div
-          key={walletType}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            border: "1px solid #eee",
-            borderRadius: "8px",
-            padding: "10px",
-            marginBottom: "8px",
-          }}
-        >
-          <div>
-            <strong>{target.label}</strong>
-            <div>{shortenAddress(target.address)}</div>
-          </div>
+      {wallets.map((wallet) => {
+        const target =
+          DEPOSIT_TARGETS[
+            wallet.walletType as keyof typeof DEPOSIT_TARGETS
+          ];
 
-          <button onClick={() => handleDeposit(walletType, target.address)}>
-            입금
-          </button>
-        </div>
-      ))}
+        if (!target) return null;
+
+        return (
+          <div
+            key={wallet.id}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              border: "1px solid #eee",
+              borderRadius: "8px",
+              padding: "10px",
+              marginBottom: "8px",
+            }}
+          >
+            <div>
+              <strong>{target.label}</strong>
+              <div>{shortenAddress(wallet.address)}</div>
+            </div>
+
+            <button
+              onClick={() =>
+                handleDeposit(wallet.walletType, wallet.address)
+              }
+            >
+              입금
+            </button>
+          </div>
+        );
+      })}
 
       {message && (
         <p style={{ marginTop: "12px", color: "blue" }}>

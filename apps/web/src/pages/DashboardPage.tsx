@@ -91,7 +91,7 @@ export default function DashboardPage() {
     )}
     <WalletConnect />
 
-    <DepositPanel />
+    <DepositPanel wallets={wallets} />
 
     <h2>내 지갑 목록</h2>
     <WalletList wallets={wallets} />

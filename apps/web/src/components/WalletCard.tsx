@@ -4,6 +4,7 @@ import type { Wallet, WalletBalance, WithdrawItem, SssStatus, } from "../types/w
 import WithdrawHistory from "./WithdrawHistory";
 import { formatEther, isAddress  } from "ethers";
 import { shortenAddress } from "../utils/address";
+import { parseEther } from "ethers";
 
 type Props = {
   wallet: Wallet;
@@ -15,7 +16,7 @@ export default function WalletCard({ wallet }: Props) {
   const [showWithdraws, setShowWithdraws] = useState(false);
 
   const [toAddress, setToAddress] = useState("0x1111111111111111111111111111111111111111");
-  const [amount, setAmount] = useState("100000000000000");
+  const [amount, setAmount] = useState("0.0001");
   const [message, setMessage] = useState("");
 
   const [whitelistInput, setWhitelistInput] = useState("");
@@ -88,7 +89,24 @@ export default function WalletCard({ wallet }: Props) {
     try {
       setMessage("");
   
-      const data = await createWithdraw(wallet.id, { toAddress, amount });
+      // ✅ 입력값 검증
+      if (!amount || isNaN(Number(amount))) {
+        setMessage("올바른 금액을 입력하세요");
+        return;
+      }
+  
+      if (Number(amount) <= 0) {
+        setMessage("0보다 큰 금액을 입력하세요");
+        return;
+      }
+  
+      // ✅ ETH → wei 변환
+    const amountWei = parseEther(amount).toString();
+  
+    const data = await createWithdraw(wallet.id, {
+        toAddress,
+        amount: amountWei, // 🔥 여기 변경
+    });
   
       setMessage(data.message || "출금 요청 완료");
   
@@ -382,7 +400,7 @@ export default function WalletCard({ wallet }: Props) {
           type="text"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder="금액(wei)"
+          placeholder="금액 (ETH)"
           style={{ width: "100%", marginBottom: "8px" }}
         />
 
