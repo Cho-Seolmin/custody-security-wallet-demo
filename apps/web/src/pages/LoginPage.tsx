@@ -49,6 +49,11 @@ export default function LoginPage() {
       <p>
         계정이 없나요? <a href="/register">회원가입</a>
       </p>
+      <p>
+        테스트용 어드민 계정<br />
+        1: test@test.com / 1234 <br />
+        2: test2@test.com / 1234
+      </p>
 
       {error && <p style={{ color: "red" }}>{error}</p>}
     </div>

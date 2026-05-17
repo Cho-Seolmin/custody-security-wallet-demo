@@ -84,7 +84,7 @@ export default function DepositPanel({ wallets }: DepositPanelProps) {
         marginBottom: "20px",
       }}
     >
-      <h3>테스트 지갑으로의 입금</h3>
+      <h2>테스트 지갑으로의 입금</h2>
 
       <p style={{ color: "#555" }}>
         지갑 테스트를 위한 금액이 부족할 시 입금해주세요.

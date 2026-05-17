@@ -14,6 +14,7 @@ export default function WalletCard({ wallet }: Props) {
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [withdraws, setWithdraws] = useState<WithdrawItem[]>([]);
   const [showWithdraws, setShowWithdraws] = useState(false);
+  const [visibleWithdrawCount, setVisibleWithdrawCount] = useState(5);
 
   const [toAddress, setToAddress] = useState("0x1111111111111111111111111111111111111111");
   const [amount, setAmount] = useState("0.0001");
@@ -25,6 +26,35 @@ export default function WalletCard({ wallet }: Props) {
   const [sssStatus, setSssStatus] = useState<SssStatus | null>(null);
   const [sssPrivateKey, setSssPrivateKey] = useState("");
   const [sssLoading, setSssLoading] = useState(false);
+
+  const securityDescriptions: Record<string, string> = {
+    BACKEND_SEC: `화이트리스트 기반 출금 제어 지갑
+  1. 화이트리스트 불러오기로 화이트 리스트 확인
+  2. 출금을 허용할 주소 입력 후 주소 추가
+  3. 화이트리스트 저장 버튼 클릭하여 DB에 등록
+  4. 해당 주소로만 출금 가능`,
+  
+    MULTISIG: `관리자 승인 기반 2-of-2 출금 구조
+  1. 출금 요청
+  2. 관리자 페이지에서 승인 (승인대기 상태 에서 10분 후 자동 삭제)
+  3. 다른 관리자 계정으로 동일하게 승인
+  4. 출금 완료`,
+  
+    POLICY_GUARD: `PolicyVault + PolicyGuard 구조
+  1. 1회 출금 한도: 0.001 ETH
+  2. 0.001 ETH 초과 시 온체인에서 거래 차단`,
+  
+    KMS: `외부 키 관리 시스템 기반 지갑
+  1. 출금 요청 시 AWS KMS 인증을 통해 서명 수행`,
+  
+    MPC: `분산 키 서명 기반 지갑
+  1. Dfns API를 통한 외부 분산 키 서명으로 출금 수행`,
+  
+    SSS: `3-of-5 복구 키 기반 지갑
+  1. 5개의 키 중 3개로 private key 복구
+  2. SSS Unlock 실행
+  3. 5분 내 1회 출금 가능`,
+  };
 
   const copy = async (text: string) => {
     try {
@@ -79,6 +109,7 @@ export default function WalletCard({ wallet }: Props) {
       setMessage("");
       const data = await getWalletWithdraws(wallet.id);
       setWithdraws(data);
+      setVisibleWithdrawCount(5);
       setShowWithdraws(true);
     } catch (err: any) {
       setMessage(err?.response?.data?.message || "출금 이력 조회 실패");
@@ -100,18 +131,18 @@ export default function WalletCard({ wallet }: Props) {
         return;
       }
   
-      // ✅ ETH → wei 변환
     const amountWei = parseEther(amount).toString();
   
     const data = await createWithdraw(wallet.id, {
         toAddress,
-        amount: amountWei, // 🔥 여기 변경
+        amount: amountWei, 
     });
   
       setMessage(data.message || "출금 요청 완료");
   
       const updated = await getWalletWithdraws(wallet.id);
       setWithdraws(updated);
+      setVisibleWithdrawCount(5);
       setShowWithdraws(true);
   
     } catch (err: any) {
@@ -239,15 +270,20 @@ export default function WalletCard({ wallet }: Props) {
   const displayAddress = balance?.address ?? wallet.address;
 
   return (
-    <div
-      style={{
-        border: "1px solid #ccc",
-        borderRadius: "12px",
-        padding: "16px",
-        marginBottom: "20px",
-      }}
-    >
-      <h3>{wallet.walletType}</h3>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+          overflowWrap: "break-word",
+          wordBreak: "break-word",
+          border: "1px solid #ccc",
+          borderRadius: "12px",
+          padding: "16px",
+          marginBottom: "20px",
+        }}
+      >
+      <h2>{wallet.walletType}</h2>
       <div style={{ marginTop: "8px" }}>
         주소: {shortenAddress(displayAddress)}
         <button
@@ -281,7 +317,9 @@ export default function WalletCard({ wallet }: Props) {
       {balance && (
         <div style={{ marginTop: "12px" }}>
           <strong>잔액:</strong>
-          <div>{balance.balanceWei} wei</div>
+          <div style={{ wordBreak: "break-all" }}>
+            {balance.balanceWei} wei
+          </div>
           <div>{formatEther(balance.balanceWei)} ETH</div>
         </div>
       )}
@@ -295,23 +333,28 @@ export default function WalletCard({ wallet }: Props) {
       value={whitelistInput}
       onChange={(e) => setWhitelistInput(e.target.value)}
       placeholder="허용할 주소 입력"
-      style={{ width: "100%", marginBottom: "8px" }}
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        marginBottom: "8px",
+      }}
     />
 
-    <div style={{ marginBottom: "8px" }}>
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "8px",
+        marginBottom: "8px",
+      }}
+    >
       <button onClick={handleAddWhitelistAddress}>주소 추가</button>
 
-      <button
-        onClick={handleLoadWhitelist}
-        style={{ marginLeft: "8px" }}
-      >
+      <button onClick={handleLoadWhitelist}>
         화이트리스트 불러오기
       </button>
 
-      <button
-        onClick={handleSaveWhitelist}
-        style={{ marginLeft: "8px" }}
-      >
+      <button onClick={handleSaveWhitelist}>
         화이트리스트 저장
       </button>
     </div>
@@ -376,7 +419,11 @@ export default function WalletCard({ wallet }: Props) {
       value={sssPrivateKey}
       onChange={(e) => setSssPrivateKey(e.target.value)}
       placeholder="복구된 private key 입력"
-      style={{ width: "100%", marginBottom: "8px" }}
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        marginBottom: "8px",
+      }}
     />
 
     <button onClick={handleUnlockSss} disabled={sssLoading}>
@@ -393,7 +440,11 @@ export default function WalletCard({ wallet }: Props) {
           value={toAddress}
           onChange={(e) => setToAddress(e.target.value)}
           placeholder="받는 주소"
-          style={{ width: "100%", marginBottom: "8px" }}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            marginBottom: "8px",
+          }}
         />
 
         <input
@@ -401,7 +452,11 @@ export default function WalletCard({ wallet }: Props) {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder="금액 (ETH)"
-          style={{ width: "100%", marginBottom: "8px" }}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            marginBottom: "8px",
+          }}
         />
 
         <button onClick={handleWithdraw}>출금 요청</button>
@@ -413,8 +468,52 @@ export default function WalletCard({ wallet }: Props) {
         </p>
       )}
 
-      {showWithdraws && <WithdrawHistory items={withdraws} />}
+{showWithdraws && (
+  <div>
+    <WithdrawHistory items={withdraws.slice(0, visibleWithdrawCount)} />
+
+    {withdraws.length > 0 && (
+      <div style={{ marginTop: "8px", fontSize: "13px", color: "#666" }}>
+        총 {withdraws.length}개 중{" "}
+        {Math.min(visibleWithdrawCount, withdraws.length)}개 표시 중
+      </div>
+    )}
+
+    {visibleWithdrawCount < withdraws.length && (
+      <button
+        onClick={() => setVisibleWithdrawCount((prev) => prev + 5)}
+        style={{
+          marginTop: "8px",
+          padding: "8px 12px",
+          borderRadius: "8px",
+          border: "1px solid #ccc",
+          cursor: "pointer",
+        }}
+      >
+        더보기
+      </button>
+    )}
+  </div>
+)}
+
+      <div
+        style={{
+          marginTop: "16px",
+          padding: "12px",
+          borderRadius: "10px",
+          background: "#f5f7fb",
+          border: "1px solid #e0e6f0",
+          fontSize: "13px",
+          color: "#444",
+        }}
+      >
+        💡 {wallet.walletType} 지갑 보안 기능 사용 설명서:
+        <div style={{ marginTop: "6px", color: "#666" ,whiteSpace: "pre-line",}}>
+         {securityDescriptions[wallet.walletType] ?? "설명 추가 필요"}
+        </div>
+      </div>
     </div>
+
   );
-  
+
 }

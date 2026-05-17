@@ -67,7 +67,8 @@ getWithdrawHistory(
     | "PROCESSING"
     | "EXECUTED"
     | "REJECTED"
-    | "FAILED",
+    | "FAILED"
+    | "EXPIRED"
 ) {
   return this.walletService.getWithdrawHistory(req.user.sub, id, status);
 }

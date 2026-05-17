@@ -39,6 +39,7 @@ enum WithdrawStatus {
   EXECUTED
   REJECTED
   FAILED
+  EXPIRED
 }
 
 enum QueueStatus {
@@ -64,12 +65,12 @@ enum AdminApprovalDecision {
 }
 
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  passwordHash  String
-  role          UserRole   @default(USER)
-  status        UserStatus @default(PENDING)
-  createdAt     DateTime   @default(now())
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  role         UserRole   @default(USER)
+  status       UserStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
 
   wallets   Wallet[]
   approvals AdminApproval[]
@@ -101,6 +102,8 @@ model WithdrawRequest {
   createdAt  DateTime       @default(now())
   approvedBy String?
   txHash     String?
+
+  expiresAt DateTime?
 
   // ===== Tier1 Security 확장 필드 =====
   executionType  WalletType?
@@ -182,14 +185,14 @@ model AdminApproval {
 }
 
 model WalletSecurityState {
-  walletId             String          @id
-  isFrozen             Boolean         @default(false)
-  withdrawPaused       Boolean         @default(false)
-  cooldownSeconds      Int             @default(0)
-  lastWithdrawAt       DateTime?
-  sssUnlockState       SssUnlockState  @default(LOCKED)
-  sssUnlockExpiresAt   DateTime?
-  updatedAt            DateTime        @updatedAt
+  walletId           String         @id
+  isFrozen           Boolean        @default(false)
+  withdrawPaused     Boolean        @default(false)
+  cooldownSeconds    Int            @default(0)
+  lastWithdrawAt     DateTime?
+  sssUnlockState     SssUnlockState @default(LOCKED)
+  sssUnlockExpiresAt DateTime?
+  updatedAt          DateTime       @updatedAt
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }

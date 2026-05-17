@@ -9,7 +9,7 @@ export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   @Get("withdraws")
-  listWithdraws(@Query("status") status?: "PENDING" | "EXECUTED" | "REJECTED") {
+  listWithdraws(@Query("status") status?: "PENDING" | "EXECUTED" | "REJECTED"  | "EXPIRED") {
     return this.admin.listWithdraws(status);
   }
 

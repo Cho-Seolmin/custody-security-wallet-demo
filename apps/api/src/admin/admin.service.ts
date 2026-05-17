@@ -9,7 +9,7 @@ export class AdminService {
     private queueService: QueueService,
     private withdrawalAuditService: WithdrawalAuditService,) {}
 
-  async listWithdraws(status?: "PENDING" | "EXECUTED" | "REJECTED") {
+  async listWithdraws(status?: "PENDING" | "EXECUTED" | "REJECTED"  | "EXPIRED") {
     return this.prisma.withdrawRequest.findMany({
       where: status ? { status } : {},
       orderBy: { createdAt: "desc" },
@@ -39,6 +39,19 @@ export class AdminService {
   
     if (wr.status !== "PENDING") {
       throw new BadRequestException("Only PENDING can be approved");
+    }
+
+    if (wr.expiresAt && wr.expiresAt < new Date()) {
+      await this.prisma.withdrawRequest.update({
+        where: { id: wr.id },
+        data: {
+          status: "EXPIRED",
+          failureReason: "Multisig approval expired",
+          finalizedAt: new Date(),
+        },
+      });
+    
+      throw new BadRequestException("Multisig approval expired");
     }
   
     if (wr.wallet.walletType !== "MULTISIG") {
@@ -116,6 +129,18 @@ export class AdminService {
     const wr = await this.prisma.withdrawRequest.findUnique({ where: { id: withdrawRequestId } });
     if (!wr) throw new NotFoundException("WithdrawRequest not found");
     if (wr.status !== "PENDING") throw new BadRequestException("Only PENDING can be rejected");
+    if (wr.expiresAt && wr.expiresAt < new Date()) {
+      await this.prisma.withdrawRequest.update({
+        where: { id: wr.id },
+        data: {
+          status: "EXPIRED",
+          failureReason: "Multisig approval expired",
+          finalizedAt: new Date(),
+        },
+      });
+    
+      throw new BadRequestException("Multisig approval expired");
+    }
 
     return this.prisma.withdrawRequest.update({
       where: { id: withdrawRequestId },

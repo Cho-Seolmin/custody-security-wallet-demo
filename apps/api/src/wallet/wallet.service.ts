@@ -6,7 +6,6 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateWalletDto } from "./dto/create-wallet.dto";
-import { randomBytes } from "crypto";
 import { SignerService } from "./signer.service";
 import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
@@ -263,12 +262,14 @@ export class WalletService {
             toAddress: dto.toAddress,
             status: "PENDING",
             executionType: "MULTISIG",
+            expiresAt: new Date(Date.now() + 10 * 60 * 1000),
           },
           select: {
             id: true,
             status: true,
             amount: true,
             toAddress: true,
+            expiresAt: true,
             createdAt: true,
           },
         });
@@ -665,7 +666,7 @@ export class WalletService {
   async getWithdrawHistory(
     userId: string,
     walletId: string,
-    status?: "PENDING" | "APPROVED" | "QUEUED" | "PROCESSING" | "EXECUTED" | "REJECTED" | "FAILED",
+    status?: "PENDING" | "APPROVED" | "QUEUED" | "PROCESSING" | "EXECUTED" | "REJECTED" | "FAILED"  | "EXPIRED",
   ) {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
@@ -702,6 +703,7 @@ export class WalletService {
         broadcastedAt: true,
         confirmedAt: true,
         finalizedAt: true,
+        expiresAt: true,
         createdAt: true,
         metadata: true,
       },

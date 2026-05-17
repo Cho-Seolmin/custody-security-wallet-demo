@@ -23,6 +23,7 @@ export default function RegisterPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [registerResult, setRegisterResult] = useState<RegisterResponse | null>(null);
+  const [verified, setVerified] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,15 +33,35 @@ export default function RegisterPage() {
     try {
       const data = await register(email, password);
       setRegisterResult(data);
-      setMessage("회원가입 완료. 인증 링크 열기 버튼을 눌러 가입해주세요. (10분안에 누르지 않을시 회원가입이 실패합니다)");
+      setMessage("임시 이메일 인증 버튼을 눌러 가입해주세요. (10분안에 누르지 않을시 회원가입이 실패합니다)");
     } catch (err: any) {
       setError(err?.response?.data?.message || "회원가입 실패");
     }
   };
 
-  const handleOpenVerifyLink = () => {
-    if (!registerResult?.verifyUrl) return;
-    window.open(registerResult.verifyUrl, "_blank");
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+
+  const handleOpenVerifyLink = async () => {
+    if (!registerResult?.token) return;
+  
+    try {
+      setMessage("");
+      setError("");
+  
+      const res = await fetch(
+        `${API_BASE_URL}/auth/verify-email?token=${registerResult.token}`,
+      );
+  
+      if (!res.ok) {
+        throw new Error("이메일 인증 실패");
+      }
+  
+      setMessage("회원가입 완료 (임시 이메일 인증 완료)");
+      setVerified(true);
+  
+    } catch (err) {
+      setError("이메일 인증 실패");
+    }
   };
 
   return (
@@ -70,8 +91,7 @@ export default function RegisterPage() {
           <p>{message}</p>
           <p>이메일: {registerResult.user.email}</p>
           <p>상태: {registerResult.user.status}</p>
-
-          <button onClick={handleOpenVerifyLink}>인증 링크 열기</button>
+          {!verified && (<button onClick={handleOpenVerifyLink}> 임시 이메일 인증 하기 </button>)}
           <button onClick={() => navigate("/login")}>로그인 페이지로 이동</button>
         </div>
       )}

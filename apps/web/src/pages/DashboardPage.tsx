@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getMe } from "../api/auth";
 import { getWallets } from "../api/wallet";
-import WalletList from "../components/WalletList";
+import WalletCard from "../components/WalletCard";
 import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [currentSlide, setCurrentSlide] = useState(0);
   const navigate = useNavigate();
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
@@ -61,42 +62,158 @@ export default function DashboardPage() {
   if (loading) {
     return <div style={{ padding: "40px" }}>로딩 중...</div>;
   }
+  const totalSlides = 1 + wallets.length;
+
+  const goPrev = () => {
+    setCurrentSlide((prev) => Math.max(prev - 1, 0));
+  };
+
+  const goNext = () => {
+    setCurrentSlide((prev) =>
+      Math.min(prev + 1, totalSlides - 1)
+    );
+  };
 
   return (
-    <div style={{ padding: "40px" }}>
-      <h1>Dashboard</h1>
-
-      <button onClick={handleLogout}>로그아웃</button>
-      <button onClick={handleRefresh}>새로고침</button>
-      <button onClick={() => navigate("/admin")}>관리자 페이지 이동</button>      
-
-      {me && (
+    <div
+      style={{
+        width: "100%",
+        minHeight: "100vh",
+        background: "#f5f7fb",
+        boxSizing: "border-box",
+        padding: "24px",
+      }}
+    >
       <div
         style={{
-          border: "1px solid #ccc",
-          borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
+          width: "600px",
+          maxWidth: "100%",
+          margin: "0 auto",
+          background: "#ffffff",
+          minHeight: "calc(100vh - 48px)",
+          padding: "32px 24px",
+          borderRadius: "16px",
+          boxSizing: "border-box",
         }}
       >
-        <h2 style={{ margin: 0 }}>내 정보</h2>
-        <p style={{ margin: 0 }}>이메일: {me.email}</p>
-        <p style={{ margin: 0 }}>권한: {me.role}</p>
-        <p style={{ margin: 0 }}>상태: {me.status}</p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "8px",
+            marginBottom: "16px",
+            flexWrap: "wrap",
+          }}
+        >
+          <button onClick={handleRefresh}>
+            새로고침
+          </button>
 
+          <button onClick={() => navigate("/admin")}>
+            관리자 페이지
+          </button>
+
+          <button onClick={handleLogout}>
+            로그아웃
+          </button>
+        </div>
+        
+        <h1 style={{ textAlign: "center", marginBottom: "20px" }}>
+          Custody Security Wallet Demo
+        </h1>
+  
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "24px",
+            gap: "12px",
+          }}
+        >
+          <button onClick={goPrev} disabled={currentSlide === 0}>
+            이전
+          </button>
+  
+          <div style={{ fontWeight: "bold" }}>
+            {currentSlide + 1} / {totalSlides}
+          </div>
+  
+          <button
+            onClick={goNext}
+            disabled={currentSlide === totalSlides - 1}
+          >
+            다음
+          </button>
+        </div>
+  
+        <div
+          style={{
+            minHeight: "600px",
+            width: "100%",
+            maxWidth: "100%",
+            overflow: "hidden",
+            boxSizing: "border-box",
+          }}
+        >
+          {currentSlide === 0 && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              <h2 style={{ textAlign: "center", marginTop: 0, marginBottom: "16px" }}>
+                내 프로필 페이지
+              </h2>
+  
+              {me && (
+                <div
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: "1px solid #ccc",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    marginBottom: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <h2 style={{ margin: 0 }}>내 정보</h2>
+                  <p style={{ margin: 0 }}>이메일: {me.email}</p>
+                  <p style={{ margin: 0 }}>권한: {me.role}</p>
+                  <p style={{ margin: 0 }}>상태: {me.status}</p>
+                </div>
+              )}
+  
+              <WalletConnect />
+  
+              <DepositPanel wallets={wallets} />
+            </div>
+          )}
+  
+          {currentSlide > 0 && (
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              <h2 style={{ textAlign: "center", marginTop: 0, marginBottom: "16px" }}>
+                내 지갑 페이지
+              </h2>
+  
+              <WalletCard wallet={wallets[currentSlide - 1]} />
+            </div>
+          )}
+  
+          {error && <p style={{ color: "red" }}>{error}</p>}
+        </div>
       </div>
-    )}
-    <WalletConnect />
-
-    <DepositPanel wallets={wallets} />
-
-    <h2>내 지갑 목록</h2>
-    <WalletList wallets={wallets} />
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );
 }
