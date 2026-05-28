@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "./queue.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { ExecutionRouterService } from "./execution-router.service";
+import { WithdrawGateway } from "./withdraw.gateway";
 
 @Injectable()
 export class WithdrawalWorkerService implements OnModuleInit {
@@ -14,6 +15,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
     private readonly queueService: QueueService,
     private readonly withdrawalAuditService: WithdrawalAuditService,
     private readonly executionRouterService: ExecutionRouterService,
+    private readonly withdrawGateway: WithdrawGateway,
   ) {}
 
   onModuleInit() {
@@ -74,6 +76,14 @@ export class WithdrawalWorkerService implements OnModuleInit {
             failureReason: `Unsupported walletType: ${withdrawRequest.wallet.walletType}`,
             finalizedAt: new Date(),
           },
+        });
+
+        this.withdrawGateway.emitWithdrawUpdated({
+          withdrawRequestId: withdrawRequest.id,
+          walletId: withdrawRequest.walletId,
+          walletType: withdrawRequest.wallet.walletType,
+          status: "PROCESSING",
+          message: "Withdraw processing started",
         });
 
         await this.withdrawalAuditService.append({
@@ -139,6 +149,15 @@ export class WithdrawalWorkerService implements OnModuleInit {
           });
 
           await this.queueService.markSucceeded(job.id);
+
+          this.withdrawGateway.emitWithdrawUpdated({
+            withdrawRequestId: withdrawRequest.id,
+            walletId: withdrawRequest.walletId,
+            walletType: withdrawRequest.wallet.walletType,
+            status: "EXECUTED",
+            txHash: result.txHash,
+            message: "Withdraw executed successfully",
+          });
 
           await this.withdrawalAuditService.append({
             withdrawRequestId: withdrawRequest.id,
@@ -227,6 +246,13 @@ export class WithdrawalWorkerService implements OnModuleInit {
         const errorMessage = error?.message || "Execution failed";
 
         if (nextRetryCount >= 3) {
+          this.withdrawGateway.emitWithdrawUpdated({
+            withdrawRequestId: withdrawRequest.id,
+            walletId: withdrawRequest.walletId,
+            walletType: withdrawRequest.wallet.walletType,
+            status: "FAILED",
+            message: "Execution failed and max retries exceeded",
+          });
           await this.prisma.withdrawRequest.update({
             where: { id: withdrawRequest.id },
             data: {

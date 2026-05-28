@@ -5,6 +5,7 @@ import WithdrawHistory from "./WithdrawHistory";
 import { formatEther, isAddress  } from "ethers";
 import { shortenAddress } from "../utils/address";
 import { parseEther } from "ethers";
+import { socket } from "../lib/socket";
 
 type Props = {
   wallet: Wallet;
@@ -266,6 +267,38 @@ export default function WalletCard({ wallet }: Props) {
       handleLoadSssStatus();
     }
   }, [wallet.id, wallet.walletType]);
+
+  useEffect(() => {
+    const handleWithdrawUpdated = async (payload: {
+      withdrawRequestId: string;
+      walletId: string;
+      walletType?: string;
+      status: string;
+      txHash?: string | null;
+      message?: string;
+    }) => {
+      if (payload.walletId !== wallet.id) return;
+  
+      try {
+        const updated = await getWalletWithdraws(wallet.id);
+        setWithdraws(updated);
+  
+        if (showWithdraws === false) {
+          return;
+        }
+  
+        setMessage(`출금 상태가 업데이트되었습니다: ${payload.status}`);
+      } catch {
+        setMessage("출금 상태 업데이트 후 이력 재조회 실패");
+      }
+    };
+  
+    socket.on("withdraw.updated", handleWithdrawUpdated);
+  
+    return () => {
+      socket.off("withdraw.updated", handleWithdrawUpdated);
+    };
+  }, [wallet.id, showWithdraws]);
 
   const displayAddress = balance?.address ?? wallet.address;
 

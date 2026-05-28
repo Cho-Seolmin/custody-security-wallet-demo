@@ -19,6 +19,12 @@ export default function WithdrawHistory({ items }: Props) {
         return "gray";
       default:
         return "black";
+      case "EXPIRED":
+        return "purple";
+      case "QUEUED":
+        return "blue";
+      case "PROCESSING":
+        return "dodgerblue";
     }
   };
   if (items.length === 0) {

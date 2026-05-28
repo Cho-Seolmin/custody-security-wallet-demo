@@ -18,6 +18,8 @@ import { MpcService } from "./mpc.service";
 import { SssExecutor } from "./executors/sss.executor";
 import { SssUnlockStoreService } from "./sss-unlock-store.service";
 import { MpcSettlementService } from "./mpc-settlement.service";
+import { MultisigExpirationScheduler } from "./multisig-expiration.scheduler";
+import { WithdrawGateway } from "./withdraw.gateway";
 
 
 @Module({
@@ -41,6 +43,8 @@ import { MpcSettlementService } from "./mpc-settlement.service";
     MpcSettlementService,
     SssUnlockStoreService,
     SssExecutor,
+    MultisigExpirationScheduler,
+    WithdrawGateway,
   ],
 })
 export class WalletModule {}
