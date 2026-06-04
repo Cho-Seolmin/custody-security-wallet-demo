@@ -20,6 +20,7 @@ export default function WalletCard({ wallet }: Props) {
   const [toAddress, setToAddress] = useState("0x1111111111111111111111111111111111111111");
   const [amount, setAmount] = useState("0.0001");
   const [message, setMessage] = useState("");
+  const [otpCode, setOtpCode] = useState("");
 
   const [whitelistInput, setWhitelistInput] = useState("");
   const [whitelistAddresses, setWhitelistAddresses] = useState<string[]>([]);
@@ -121,7 +122,7 @@ export default function WalletCard({ wallet }: Props) {
     try {
       setMessage("");
   
-      // ✅ 입력값 검증
+      
       if (!amount || isNaN(Number(amount))) {
         setMessage("올바른 금액을 입력하세요");
         return;
@@ -137,6 +138,7 @@ export default function WalletCard({ wallet }: Props) {
     const data = await createWithdraw(wallet.id, {
         toAddress,
         amount: amountWei, 
+        otpCode: otpCode.trim() || undefined,
     });
   
       setMessage(data.message || "출금 요청 완료");
@@ -491,6 +493,17 @@ export default function WalletCard({ wallet }: Props) {
             marginBottom: "8px",
           }}
         />
+        <input
+          type="text"
+          value={otpCode}
+          onChange={(e) => setOtpCode(e.target.value)}
+          placeholder="OTP 코드 (0.01 ETH 이상 출금 시 필요)"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            marginBottom: "8px",
+          }}
+        />
 
         <button onClick={handleWithdraw}>출금 요청</button>
       </div>
@@ -543,6 +556,22 @@ export default function WalletCard({ wallet }: Props) {
         💡 {wallet.walletType} 지갑 보안 기능 사용 설명서:
         <div style={{ marginTop: "6px", color: "#666" ,whiteSpace: "pre-line",}}>
          {securityDescriptions[wallet.walletType] ?? "설명 추가 필요"}
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: "12px",
+          padding: "12px",
+          borderRadius: "10px",
+          background: "#fff8e6",
+          border: "1px solid #ffe58f",
+          fontSize: "13px",
+          color: "#8c6d1f",
+        }}
+      >
+        🔐 Risk-Based Security
+        <div style={{ marginTop: "6px" }}>
+          0.01 ETH 이상 고액 출금은 OTP 추가 인증 후 진행됩니다.
         </div>
       </div>
     </div>

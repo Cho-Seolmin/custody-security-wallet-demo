@@ -1,4 +1,6 @@
 export class WithdrawDto {
-    toAddress!: string;
-    amount!: string; 
-  }
+  toAddress!: string;
+  amount!: string;
+
+  otpCode?: string;
+}

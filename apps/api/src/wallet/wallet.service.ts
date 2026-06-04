@@ -15,6 +15,7 @@ import { KmsService} from "./kms.service";
 import { MpcService} from "./mpc.service";
 import { SssUnlockStoreService } from "./sss-unlock-store.service";
 import * as sss from "shamirs-secret-sharing";
+import * as speakeasy from "speakeasy";
 
 @Injectable()
 export class WalletService {
@@ -238,7 +239,8 @@ export class WalletService {
   async withdraw(
     userId: string,
     walletId: string,
-    dto: { toAddress: string; amount: string }
+    dto: { toAddress: string; amount: string , otpCode?: string},
+    idempotencyKey?: string,
   ) {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
@@ -250,8 +252,62 @@ export class WalletService {
 
     const amountWei = BigInt(dto.amount);
 
-    // 정책 검사 분리
+    const OTP_REQUIRED_AMOUNT_WEI = 10_000_000_000_000_000n; // 0.01 ETH
+
+    if (amountWei >= OTP_REQUIRED_AMOUNT_WEI) {
+      const otpSecret = process.env.DEV_TOTP_SECRET;
+
+      if (!otpSecret) {
+        throw new BadRequestException("DEV_TOTP_SECRET is missing");
+      }
+
+      if (!dto.otpCode) {
+        throw new BadRequestException("OTP code is required for withdrawals of 0.01 ETH or more");
+      }
+
+      const verified = speakeasy.totp.verify({
+        secret: otpSecret,
+        encoding: "base32",
+        token: dto.otpCode,
+        window: 1,
+      });
+
+      if (!verified) {
+        throw new BadRequestException("Invalid OTP code");
+      }
+    }
+
     this.policyEngineService.validateWithdrawPolicy(wallet, dto);
+    const normalizedIdempotencyKey = idempotencyKey?.trim();
+
+    if (normalizedIdempotencyKey) {
+      const existing = await this.prisma.withdrawRequest.findFirst({
+        where: {
+          idempotencyKey: normalizedIdempotencyKey,
+          walletId: wallet.id,
+        },
+        select: {
+          id: true,
+          walletId: true,
+          amount: true,
+          toAddress: true,
+          status: true,
+          createdAt: true,
+          approvedBy: true,
+          txHash: true,
+          expiresAt: true,
+        },
+      });
+
+      if (existing) {
+        return {
+          mode: wallet.walletType,
+          message: "Duplicate withdraw request ignored. Existing request returned.",
+          withdrawRequest: existing,
+          duplicated: true,
+        };
+      }
+    }
 
     switch (wallet.walletType) {
       case "MULTISIG": {
@@ -263,6 +319,7 @@ export class WalletService {
             status: "PENDING",
             executionType: "MULTISIG",
             expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+            idempotencyKey: normalizedIdempotencyKey,
           },
           select: {
             id: true,
@@ -306,6 +363,7 @@ export class WalletService {
             status: "QUEUED",
             executionType: "KMS",
             queuedAt: new Date(),
+            idempotencyKey: normalizedIdempotencyKey,
           },
           select: {
             id: true,
@@ -367,6 +425,7 @@ export class WalletService {
               status: "QUEUED",
               executionType: "BACKEND_SEC",
               queuedAt: new Date(),
+              idempotencyKey: normalizedIdempotencyKey,
             },
             select: {
               id: true,
@@ -428,6 +487,7 @@ export class WalletService {
               status: "QUEUED",
               executionType: "POLICY_GUARD",
               queuedAt: new Date(),
+              idempotencyKey: normalizedIdempotencyKey,
             },
             select: {
               id: true,
@@ -489,6 +549,7 @@ export class WalletService {
               status: "QUEUED",
               executionType: "MPC",
               queuedAt: new Date(),
+              idempotencyKey: normalizedIdempotencyKey,
             },
             select: {
               id: true,
@@ -563,6 +624,7 @@ export class WalletService {
               status: "QUEUED",
               executionType: "SSS",
               queuedAt: new Date(),
+              idempotencyKey: normalizedIdempotencyKey,
             },
             select: {
               id: true,

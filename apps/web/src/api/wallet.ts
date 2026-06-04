@@ -21,9 +21,16 @@ export async function getWalletWithdraws(walletId: string, status?: string) {
 
 export async function createWithdraw(
   walletId: string,
-  payload: { toAddress: string; amount: string }
+  payload: { toAddress: string; amount: string; otpCode?: string }
 ) {
-  const res = await api.post(`/wallets/${walletId}/withdraw`, payload);
+  const idempotencyKey = crypto.randomUUID();
+
+  const res = await api.post(`/wallets/${walletId}/withdraw`, payload, {
+    headers: {
+      "Idempotency-Key": idempotencyKey,
+    },
+  });
+
   return res.data;
 }
 
