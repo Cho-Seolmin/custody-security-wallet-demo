@@ -17,16 +17,29 @@ export default function WithdrawHistory({ items }: Props) {
         return "orange";
       case "REJECTED":
         return "gray";
-      default:
-        return "black";
       case "EXPIRED":
         return "purple";
       case "QUEUED":
         return "blue";
       case "PROCESSING":
         return "dodgerblue";
+      default:
+        return "black";
     }
   };
+
+  const getStatusLabel = (item: WithdrawItem) => {
+    if (
+      item.status === "PENDING" &&
+      item.executionType === "MULTISIG" &&
+      typeof item.approvalCount === "number"
+    ) {
+      return `PENDING (${item.approvalCount}/${item.requiredApprovalCount ?? 2})`;
+    }
+
+    return item.status;
+  };
+
   if (items.length === 0) {
     return <p>출금 이력이 없습니다.</p>;
   }
@@ -38,11 +51,16 @@ export default function WithdrawHistory({ items }: Props) {
         {items.map((item) => (
           <li key={item.id} style={{ marginBottom: "10px" }}>
             <div>
-              상태: <strong style={{ color: getStatusColor(item.status) }}>{item.status}</strong>
+              상태:{" "}
+              <strong style={{ color: getStatusColor(item.status) }}>
+                {getStatusLabel(item)}
+              </strong>
             </div>
+
             <div>금액(ETH): {formatEther(item.amount)}</div>
-            <div>받는 주소:{shortenAddress(item.toAddress)}</div>
+            <div>받는 주소: {shortenAddress(item.toAddress)}</div>
             <div>승인자: {item.approvedBy ?? "-"}</div>
+
             <div>
               txHash:{" "}
               {item.txHash ? (
@@ -57,6 +75,7 @@ export default function WithdrawHistory({ items }: Props) {
                 "-"
               )}
             </div>
+
             <div>생성일: {new Date(item.createdAt).toLocaleString()}</div>
           </li>
         ))}

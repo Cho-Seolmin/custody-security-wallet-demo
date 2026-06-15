@@ -82,8 +82,8 @@ export class WithdrawalWorkerService implements OnModuleInit {
           withdrawRequestId: withdrawRequest.id,
           walletId: withdrawRequest.walletId,
           walletType: withdrawRequest.wallet.walletType,
-          status: "PROCESSING",
-          message: "Withdraw processing started",
+          status: "FAILED",
+          message: `Unsupported walletType: ${withdrawRequest.wallet.walletType}`,
         });
 
         await this.withdrawalAuditService.append({

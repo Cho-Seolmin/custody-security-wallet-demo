@@ -768,14 +768,23 @@ export class WalletService {
         expiresAt: true,
         createdAt: true,
         metadata: true,
+
+        _count: {
+          select: {
+            adminApprovals: true,
+          },
+        },
       },
     });
   
     return rows.map((row) => {
       const metadata = (row.metadata as Record<string, any> | null) ?? {};
+      const { _count, ...rest } = row;
   
       return {
-        ...row,
+        ...rest,
+        approvalCount: _count.adminApprovals,
+        requiredApprovalCount: row.executionType === "MULTISIG" ? 2 : null,
         externalProvider: metadata.externalProvider ?? null,
         externalRequestId: metadata.externalRequestId ?? null,
         externalStatus: metadata.externalStatus ?? null,

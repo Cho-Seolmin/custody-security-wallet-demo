@@ -17,14 +17,32 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
         return "orange";
       case "REJECTED":
         return "gray";
+      case "EXPIRED":
+        return "purple";
+      case "QUEUED":
+        return "blue";
+      case "PROCESSING":
+        return "dodgerblue";
       default:
         return "black";
     }
   };
+
+  const getStatusLabel = (item: WithdrawItem) => {
+    if (
+      item.status === "PENDING" &&
+      typeof item.approvalCount === "number"
+    ) {
+      return `PENDING (${item.approvalCount}/${item.requiredApprovalCount ?? 2})`;
+    }
+
+    return item.status;
+  };
+
   const handleApprove = async (id: string) => {
     const ok = window.confirm("정말 승인하시겠습니까?");
     if (!ok) return;
-  
+
     try {
       await approveWithdraw(id);
       await onRefresh();
@@ -37,7 +55,7 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
   const handleReject = async (id: string) => {
     const ok = window.confirm("정말 거절하시겠습니까?");
     if (!ok) return;
-  
+
     try {
       await rejectWithdraw(id);
       await onRefresh();
@@ -67,7 +85,10 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
           <div>금액(wei): {item.amount}</div>
           <div>받는 주소: {item.toAddress}</div>
           <div>
-            상태: <strong style={{ color: getStatusColor(item.status) }}>{item.status}</strong>
+            상태:{" "}
+            <strong style={{ color: getStatusColor(item.status) }}>
+              {getStatusLabel(item)}
+            </strong>
           </div>
           <div>승인자: {item.approvedBy ?? "-"}</div>
           <div>txHash: {item.txHash ?? "-"}</div>
@@ -76,7 +97,10 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
           {item.status === "PENDING" && (
             <div style={{ marginTop: "12px" }}>
               <button onClick={() => handleApprove(item.id)}>승인</button>
-              <button onClick={() => handleReject(item.id)} style={{ marginLeft: "8px" }}>
+              <button
+                onClick={() => handleReject(item.id)}
+                style={{ marginLeft: "8px" }}
+              >
                 거절
               </button>
             </div>

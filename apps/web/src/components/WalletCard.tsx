@@ -1,4 +1,4 @@
-import {  useEffect, useState } from "react";
+import {  useEffect, useState,useRef } from "react";
 import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, getSssStatus, unlockSssWallet, } from "../api/wallet";
 import type { Wallet, WalletBalance, WithdrawItem, SssStatus, } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
@@ -28,6 +28,8 @@ export default function WalletCard({ wallet }: Props) {
   const [sssStatus, setSssStatus] = useState<SssStatus | null>(null);
   const [sssPrivateKey, setSssPrivateKey] = useState("");
   const [sssLoading, setSssLoading] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const withdrawLockRef = useRef(false);
 
   const securityDescriptions: Record<string, string> = {
     BACKEND_SEC: `화이트리스트 기반 출금 제어 지갑
@@ -119,10 +121,19 @@ export default function WalletCard({ wallet }: Props) {
   };
 
   const handleWithdraw = async () => {
+    if (withdrawLockRef.current) {
+      setMessage(
+        "⚠️ 연속 출금 요청 방지를 위해 3초 후 다시 시도해주세요."
+      );
+      return;
+    }
+      
+    withdrawLockRef.current = true;
+    setWithdrawLoading(true);
+  
     try {
       setMessage("");
   
-      
       if (!amount || isNaN(Number(amount))) {
         setMessage("올바른 금액을 입력하세요");
         return;
@@ -133,13 +144,13 @@ export default function WalletCard({ wallet }: Props) {
         return;
       }
   
-    const amountWei = parseEther(amount).toString();
+      const amountWei = parseEther(amount).toString();
   
-    const data = await createWithdraw(wallet.id, {
+      const data = await createWithdraw(wallet.id, {
         toAddress,
-        amount: amountWei, 
+        amount: amountWei,
         otpCode: otpCode.trim() || undefined,
-    });
+      });
   
       setMessage(data.message || "출금 요청 완료");
   
@@ -147,7 +158,6 @@ export default function WalletCard({ wallet }: Props) {
       setWithdraws(updated);
       setVisibleWithdrawCount(5);
       setShowWithdraws(true);
-  
     } catch (err: any) {
       const data = err?.response?.data;
   
@@ -156,6 +166,12 @@ export default function WalletCard({ wallet }: Props) {
       } else {
         setMessage("출금 요청 실패");
       }
+    } finally {
+      setWithdrawLoading(false);
+  
+      setTimeout(() => {
+        withdrawLockRef.current = false;
+      }, 3000);
     }
   };
 
@@ -284,6 +300,9 @@ export default function WalletCard({ wallet }: Props) {
       try {
         const updated = await getWalletWithdraws(wallet.id);
         setWithdraws(updated);
+
+        const updatedBalance = await getWalletBalance(wallet.id);
+        setBalance(updatedBalance);
   
         if (showWithdraws === false) {
           return;
@@ -409,10 +428,23 @@ export default function WalletCard({ wallet }: Props) {
               marginBottom: "6px",
             }}
           >
-            <span>{shortenAddress(address)}</span>
-            <button onClick={() => handleRemoveWhitelistAddress(address)}>
-              삭제
-            </button>
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+              }}
+            >
+              <span>{shortenAddress(address)}</span>
+              <button onClick={() => copy(address)}>
+                복사
+              </button>
+
+              <button
+                onClick={() => handleRemoveWhitelistAddress(address)}
+              >
+                삭제
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -505,7 +537,9 @@ export default function WalletCard({ wallet }: Props) {
           }}
         />
 
-        <button onClick={handleWithdraw}>출금 요청</button>
+        <button onClick={handleWithdraw} disabled={withdrawLoading}>
+          {withdrawLoading ? "출금 요청 중..." : "출금 요청"}
+        </button>
       </div>
 
       {message && (

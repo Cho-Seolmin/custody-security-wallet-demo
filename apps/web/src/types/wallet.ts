@@ -22,6 +22,9 @@ export type Wallet = {
     approvedBy: string | null;
     txHash: string | null;
     createdAt: string;
+    executionType?: string | null;
+    approvalCount?: number;
+    requiredApprovalCount?: number | null;
   };
 
   export type SssStatus = {

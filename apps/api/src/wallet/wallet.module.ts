@@ -46,5 +46,10 @@ import { WithdrawGateway } from "./withdraw.gateway";
     MultisigExpirationScheduler,
     WithdrawGateway,
   ],
+  exports: [
+    QueueService,
+    WithdrawalAuditService,
+    WithdrawGateway,
+  ],
 })
 export class WalletModule {}

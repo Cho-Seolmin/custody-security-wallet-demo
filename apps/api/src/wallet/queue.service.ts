@@ -1,7 +1,5 @@
-// src/wallet/queue.service.ts
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { QueueStatus } from "@prisma/client";
 
 @Injectable()
 export class QueueService {
@@ -30,7 +28,6 @@ export class QueueService {
       where: { withdrawRequestId },
     });
   }
-
   async reserveNext(workerId: string) {
     const job = await this.prisma.withdrawalQueue.findFirst({
       where: {
@@ -44,16 +41,33 @@ export class QueueService {
       },
       orderBy: { createdAt: "asc" },
     });
-
+  
     if (!job) return null;
-
-    return this.prisma.withdrawalQueue.update({
-      where: { id: job.id },
+  
+    const reserved = await this.prisma.withdrawalQueue.updateMany({
+      where: {
+        id: job.id,
+        OR: [
+          { status: "PENDING" },
+          {
+            status: "RETRY_WAIT",
+            availableAt: { lte: new Date() },
+          },
+        ],
+      },
       data: {
         status: "RESERVED",
         reservedAt: new Date(),
         workerId,
       },
+    });
+  
+    if (reserved.count === 0) {
+      return null;
+    }
+  
+    return this.prisma.withdrawalQueue.findUnique({
+      where: { id: job.id },
     });
   }
 
@@ -65,7 +79,7 @@ export class QueueService {
       },
     });
   }
-
+  
   async markSucceeded(queueId: string) {
     return this.prisma.withdrawalQueue.update({
       where: { id: queueId },
