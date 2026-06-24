@@ -1,19 +1,25 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { MpcService } from "./mpc.service";
+import { WithdrawalAuditService } from "./withdrawal-audit.service";
+import { WithdrawGateway } from "./withdraw.gateway";
+import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class MpcSettlementService implements OnModuleInit {
   private readonly logger = new Logger(MpcSettlementService.name);
-  private isPolling = false;
-  private static readonly POLL_INTERVAL_MS = 5000;
-  private static readonly MAX_PENDING_MS = 30 * 60 * 1000; // 30분
+  private isProcessing = false;
+  private toPrismaJson(value: unknown): Prisma.InputJsonValue | null {
+    if (value === undefined) return null;
+  
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly withdrawalAuditService: WithdrawalAuditService,
     private readonly mpcService: MpcService,
+    private readonly withdrawalAuditService: WithdrawalAuditService,
+    private readonly withdrawGateway: WithdrawGateway,
   ) {}
 
   onModuleInit() {
@@ -21,150 +27,78 @@ export class MpcSettlementService implements OnModuleInit {
       this.poll().catch((error) => {
         this.logger.error("MPC settlement poll failed", error);
       });
-    }, MpcSettlementService.POLL_INTERVAL_MS);
+    }, 10000);
   }
 
   private async poll() {
-    if (this.isPolling) return;
-    this.isPolling = true;
+    if (this.isProcessing) return;
+
+    this.isProcessing = true;
 
     try {
-      const requests = await this.prisma.withdrawRequest.findMany({
+      const pendingRequests = await this.prisma.withdrawRequest.findMany({
         where: {
           status: "PROCESSING",
+          wallet: {
+            walletType: "MPC",
+          },
+          metadata: {
+            path: ["externalProvider"],
+            equals: "MPC",
+          },
         },
         include: {
           wallet: true,
         },
+        take: 10,
         orderBy: {
-          createdAt: "asc",
+          processingAt: "asc",
         },
-        take: 20,
       });
 
-      for (const request of requests) {
-        if (request.wallet.walletType !== "MPC") continue;
+      for (const request of pendingRequests) {
+        const metadata = request.metadata as Record<string, any> | null;
+        const externalRequestId = metadata?.externalRequestId;
 
-        const metadata = (request.metadata as Record<string, any> | null) ?? {};
-
-        if (metadata.externalProvider !== "MPC") continue;
-        if (!metadata.externalRequestId) continue;
-
-        if (
-          metadata.externalStatus === "CONFIRMED" ||
-          metadata.externalStatus === "FAILED" ||
-          metadata.externalStatus === "TIMEOUT"
-        ) {
+        if (!externalRequestId) {
           continue;
         }
 
-        const submittedAtMs = metadata.externalSubmittedAt
-          ? new Date(metadata.externalSubmittedAt).getTime()
-          : null;
-
-        if (
-          submittedAtMs &&
-          Date.now() - submittedAtMs > MpcSettlementService.MAX_PENDING_MS
-        ) {
-          await this.prisma.withdrawRequest.update({
-            where: { id: request.id },
-            data: {
-              status: "FAILED",
-              failureReason: "MPC transfer confirmation timeout",
-              finalizedAt: new Date(),
-              metadata: {
-                ...metadata,
-                externalStatus: "TIMEOUT",
-              },
-            },
-          });
-
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: request.id,
-            walletId: request.walletId,
-            userId: request.wallet.userId,
-            eventType: "MPC_TIMEOUT",
-            actorType: "SYSTEM",
-            message: "MPC transfer timed out while waiting for confirmation",
-            data: {
-              externalRequestId: metadata.externalRequestId,
-              provider: "MPC",
-              walletType: request.wallet.walletType,
-              timeoutMinutes: 30,
-            },
-          });
-
-          this.logger.warn(
-            `MPC timeout: requestId=${request.id}, externalRequestId=${metadata.externalRequestId}`,
-          );
-
-          continue;
-        }
-
-        const result = await this.mpcService.getTransferStatus({
-          externalRequestId: metadata.externalRequestId,
-          submittedAt: metadata.externalSubmittedAt,
+        const statusResult = await this.mpcService.getTransferStatus({
+          externalRequestId,
+          submittedAt: metadata?.externalSubmittedAt,
         });
 
-        const raw = (result.raw as Record<string, any> | null) ?? {};
-        const providerStatus = raw.status ?? null;
-
-        if (
-          providerStatus === "Broadcasted" &&
-          metadata.externalStatus !== "BROADCASTED"
-        ) {
+        if (statusResult.status === "PENDING") {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
-              broadcastedAt: new Date(),
               metadata: {
                 ...metadata,
-                externalStatus: "BROADCASTED",
-                externalRaw: result.raw ?? null,
+                externalStatus: "PENDING",
+                externalLastCheckedAt: new Date().toISOString(),
+                externalRaw: this.toPrismaJson(statusResult.raw),
               },
             },
           });
 
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: request.id,
-            walletId: request.walletId,
-            userId: request.wallet.userId,
-            eventType: "MPC_BROADCASTED",
-            actorType: "SYSTEM",
-            message: "MPC transfer broadcasted",
-            data: {
-              externalRequestId: metadata.externalRequestId,
-              provider: "MPC",
-              walletType: request.wallet.walletType,
-            },
-          });
-
-          this.logger.log(
-            `MPC broadcasted: requestId=${request.id}, externalRequestId=${metadata.externalRequestId}`,
-          );
-
           continue;
         }
 
-        if (result.status === "PENDING") {
-          continue;
-        }
-
-        if (result.status === "CONFIRMED") {
+        if (statusResult.status === "CONFIRMED") {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
               status: "EXECUTED",
-              txHash: result.txHash,
-              broadcastedAt: request.broadcastedAt ?? new Date(),
+              txHash: statusResult.txHash,
               confirmedAt: new Date(),
               finalizedAt: new Date(),
               failureReason: null,
               metadata: {
                 ...metadata,
                 externalStatus: "CONFIRMED",
-                externalTxHash: result.txHash,
-                externalRaw: result.raw ?? null,
+                externalLastCheckedAt: new Date().toISOString(),
+                externalRaw: this.toPrismaJson(statusResult.raw),
               },
             },
           });
@@ -173,35 +107,44 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             userId: request.wallet.userId,
-            eventType: "TX_CONFIRMED",
+            eventType: "MPC_CONFIRMED",
             actorType: "SYSTEM",
-            message: "MPC transfer confirmed",
+            message: "MPC external transfer confirmed",
             data: {
-              externalRequestId: metadata.externalRequestId,
+              externalRequestId,
+              txHash: statusResult.txHash ?? null,
               provider: "MPC",
-              txHash: result.txHash,
-              walletType: request.wallet.walletType,
             },
           });
 
+          this.withdrawGateway.emitWithdrawUpdated({
+            withdrawRequestId: request.id,
+            walletId: request.walletId,
+            walletType: request.wallet.walletType,
+            status: "EXECUTED",
+            txHash: statusResult.txHash,
+            message: "MPC transfer confirmed",
+          });
+
           this.logger.log(
-            `MPC confirmed: requestId=${request.id}, txHash=${result.txHash}`,
+            `MPC transfer confirmed: requestId=${request.id}, externalRequestId=${externalRequestId}`,
           );
 
           continue;
         }
 
-        if (result.status === "FAILED") {
+        if (statusResult.status === "FAILED") {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
               status: "FAILED",
-              failureReason: "MPC execution failed",
+              failureReason: "MPC external transfer failed",
               finalizedAt: new Date(),
               metadata: {
                 ...metadata,
                 externalStatus: "FAILED",
-                externalRaw: result.raw ?? null,
+                externalLastCheckedAt: new Date().toISOString(),
+                externalRaw: this.toPrismaJson(statusResult.raw),
               },
             },
           });
@@ -210,23 +153,30 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             userId: request.wallet.userId,
-            eventType: "TX_FAILED",
+            eventType: "MPC_FAILED",
             actorType: "SYSTEM",
-            message: "MPC transfer failed",
+            message: "MPC external transfer failed",
             data: {
-              externalRequestId: metadata.externalRequestId,
+              externalRequestId,
               provider: "MPC",
-              walletType: request.wallet.walletType,
             },
           });
 
-          this.logger.log(
-            `MPC failed: requestId=${request.id}, externalRequestId=${metadata.externalRequestId}`,
+          this.withdrawGateway.emitWithdrawUpdated({
+            withdrawRequestId: request.id,
+            walletId: request.walletId,
+            walletType: request.wallet.walletType,
+            status: "FAILED",
+            message: "MPC transfer failed",
+          });
+
+          this.logger.warn(
+            `MPC transfer failed: requestId=${request.id}, externalRequestId=${externalRequestId}`,
           );
         }
       }
     } finally {
-      this.isPolling = false;
+      this.isProcessing = false;
     }
   }
 }

@@ -93,7 +93,7 @@ getKmsInfo() {
   return this.walletService.getKmsInfo();
 }
 
-@Post(":id/sss/unlock")
+/* @Post(":id/sss/unlock")
 @UseGuards(JwtAuthGuard)
 unlockSss(
   @Req() req: any,
@@ -107,6 +107,6 @@ unlockSss(
 @UseGuards(JwtAuthGuard)
 getSssStatus(@Req() req: any, @Param("id") id: string) {
   return this.walletService.getSssStatus(req.user.sub, id);
-}
+} */
 
 }

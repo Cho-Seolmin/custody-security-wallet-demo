@@ -1,14 +1,13 @@
 import {  useEffect, useState,useRef } from "react";
-import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, getSssStatus, unlockSssWallet, } from "../api/wallet";
-import type { Wallet, WalletBalance, WithdrawItem, SssStatus, } from "../types/wallet";
+import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, } from "../api/wallet";
+import type { Wallet as WalletType, WalletBalance, WithdrawItem } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
-import { formatEther, isAddress  } from "ethers";
+import { Wallet ,formatEther, isAddress, parseEther, JsonRpcProvider  } from "ethers";
 import { shortenAddress } from "../utils/address";
-import { parseEther } from "ethers";
 import { socket } from "../lib/socket";
 
 type Props = {
-  wallet: Wallet;
+  wallet: WalletType;
 };
 
 export default function WalletCard({ wallet }: Props) {
@@ -25,9 +24,7 @@ export default function WalletCard({ wallet }: Props) {
   const [whitelistInput, setWhitelistInput] = useState("");
   const [whitelistAddresses, setWhitelistAddresses] = useState<string[]>([]);
 
-  const [sssStatus, setSssStatus] = useState<SssStatus | null>(null);
   const [sssPrivateKey, setSssPrivateKey] = useState("");
-  const [sssLoading, setSssLoading] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const withdrawLockRef = useRef(false);
 
@@ -55,9 +52,10 @@ export default function WalletCard({ wallet }: Props) {
   1. Dfns API를 통한 외부 분산 키 서명으로 출금 수행`,
   
     SSS: `3-of-5 복구 키 기반 지갑
-  1. 5개의 키 중 3개로 private key 복구
-  2. SSS Unlock 실행
-  3. 5분 내 1회 출금 가능`,
+  1. 5개의 키 중 3개로 private key 복구 (복구 프로그램 다운 후 실행)
+  2. 브라우저에서 signedTx 생성
+  3. 서버는 privateKey를 저장하지 않고 signedTx만 검증 및 broadcast
+  4. 검증 완료 후 1회 출금 가능, 출금 후 다시 잠금`
   };
 
   const copy = async (text: string) => {
@@ -145,12 +143,63 @@ export default function WalletCard({ wallet }: Props) {
       }
   
       const amountWei = parseEther(amount).toString();
-  
+
+      let signedTx: string | undefined;
+
+      if (wallet.walletType === "SSS") {
+        if (!sssPrivateKey.trim()) {
+          setMessage("SSS 출금은 private key 입력이 필요합니다.");
+          return;
+        }
+
+        const rpcUrl = import.meta.env.VITE_SEPOLIA_RPC_URL;
+
+        if (!rpcUrl) {
+          setMessage("VITE_SEPOLIA_RPC_URL이 설정되어 있지 않습니다.");
+          return;
+        }
+
+        const provider = new JsonRpcProvider(rpcUrl);
+        const sssSigner = new Wallet(sssPrivateKey.trim(), provider);
+
+        const signerAddress = await sssSigner.getAddress();
+
+        if (signerAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+          setMessage("private key가 SSS 지갑 주소와 일치하지 않습니다.");
+          return;
+        }
+
+        const nonce = await provider.getTransactionCount(signerAddress, "pending");
+
+        const feeData = await provider.getFeeData();
+
+        if (!feeData.maxFeePerGas || !feeData.maxPriorityFeePerGas) {
+          setMessage("Sepolia fee data를 가져오지 못했습니다.");
+          return;
+        }
+        
+        signedTx = await sssSigner.signTransaction({
+          to: toAddress,
+          value: amountWei,
+          chainId: 11155111,
+          nonce,
+          type: 2,
+          gasLimit: 21000n,
+          maxFeePerGas: feeData.maxFeePerGas,
+          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+        });
+      }
+
       const data = await createWithdraw(wallet.id, {
         toAddress,
         amount: amountWei,
         otpCode: otpCode.trim() || undefined,
+        signedTx,
       });
+
+      if (wallet.walletType === "SSS") {
+        setSssPrivateKey("");
+      }
   
       setMessage(data.message || "출금 요청 완료");
   
@@ -208,54 +257,6 @@ export default function WalletCard({ wallet }: Props) {
       }
     }
   };
-
-  const handleLoadSssStatus = async () => {
-    try {
-      setMessage("");
-      const data = await getSssStatus(wallet.id);
-      setSssStatus(data);
-    } catch (err: any) {
-      const data = err?.response?.data;
-      if (typeof data?.message === "string") {
-        setMessage(data.message);
-      } else {
-        setMessage("SSS 상태 조회 실패");
-      }
-    }
-  };
-  
-  const handleUnlockSss = async () => {
-    try {
-      if (!sssPrivateKey.trim()) {
-        setMessage("프라이빗 키를 입력하세요.");
-        return;
-      }
-  
-      setMessage("");
-      setSssLoading(true);
-  
-      const data = await unlockSssWallet(wallet.id, {
-        privateKey: sssPrivateKey.trim(),
-      });
-  
-      setMessage(data.message || "SSS unlock 성공");
-      setSssPrivateKey("");
-  
-      const status = await getSssStatus(wallet.id);
-      setSssStatus(status);
-    } catch (err: any) {
-      const data = err?.response?.data;
-      if (typeof data?.message === "string") {
-        setMessage(data.message);
-      } else {
-        setMessage("SSS unlock 실패");
-      }
-    } finally {
-      setSssLoading(false);
-    }
-  };
-
-
   
   const handleAddWhitelistAddress = () => {
     const normalized = whitelistInput.trim().toLowerCase();
@@ -279,12 +280,6 @@ export default function WalletCard({ wallet }: Props) {
     setWhitelistInput("");
     setMessage("");
   };
-
-  useEffect(() => {
-    if (wallet.walletType === "SSS") {
-      handleLoadSssStatus();
-    }
-  }, [wallet.id, wallet.walletType]);
 
   useEffect(() => {
     const handleWithdrawUpdated = async (payload: {
@@ -454,7 +449,7 @@ export default function WalletCard({ wallet }: Props) {
 
 {wallet.walletType === "SSS" && (
   <div style={{ marginTop: "16px" }}>
-    <h4>SSS Unlock 관리</h4>
+    <h4>SSS Client-side Signing</h4>
 
     <div
       style={{
@@ -463,22 +458,12 @@ export default function WalletCard({ wallet }: Props) {
         padding: "12px",
         marginBottom: "12px",
         background: "#fafafa",
+        fontSize: "13px",
+        color: "#555",
       }}
     >
-      <div>
-        현재 상태:{" "}
-        <strong>
-          {sssStatus?.unlockState === "UNLOCKED_ONCE" ? "UNLOCKED" : "LOCKED"}
-        </strong>
-      </div>
-
-      <div style={{ fontSize: "12px", color: "gray", marginTop: "4px" }}>
-        만료 시간: {sssStatus?.unlockExpiresAt ?? "-"}
-      </div>
-
-      <button onClick={handleLoadSssStatus} style={{ marginTop: "8px" }}>
-        상태 새로고침
-      </button>
+      private key는 서버로 저장되지 않고, 브라우저에서 signedTx 생성에만 사용됩니다.
+      서버는 signedTx의 signer, recipient, value, chainId, nonce를 검증한 뒤 broadcast합니다.
     </div>
 
     <input
@@ -492,10 +477,6 @@ export default function WalletCard({ wallet }: Props) {
         marginBottom: "8px",
       }}
     />
-
-    <button onClick={handleUnlockSss} disabled={sssLoading}>
-      {sssLoading ? "Unlock 중..." : "SSS Unlock"}
-    </button>
   </div>
 )}
 

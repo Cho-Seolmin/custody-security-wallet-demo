@@ -10,7 +10,7 @@ import { SignerService } from "./signer.service";
 import { PolicyEngineService } from "./policy-engine.service";
 import { WithdrawalAuditService } from "./withdrawal-audit.service";
 import { QueueService } from "./queue.service";
-import { isAddress, Wallet  } from "ethers";
+import { isAddress, Wallet, Transaction   } from "ethers";
 import { KmsService} from "./kms.service";
 import { MpcService} from "./mpc.service";
 import { SssUnlockStoreService } from "./sss-unlock-store.service";
@@ -239,7 +239,7 @@ export class WalletService {
   async withdraw(
     userId: string,
     walletId: string,
-    dto: { toAddress: string; amount: string , otpCode?: string},
+    dto: { toAddress: string; amount: string , otpCode?: string; signedTx?: string},
     idempotencyKey?: string,
   ) {
     const wallet = await this.prisma.wallet.findUnique({
@@ -603,17 +603,45 @@ export class WalletService {
         }
 
         case "SSS": {
-          const securityState = await this.prisma.walletSecurityState.findUnique({
-            where: { walletId: wallet.id },
-          });
+          if (!dto.signedTx) {
+            throw new BadRequestException("signedTx is required for SSS withdrawal");
+          }
         
-          if (
-            !securityState ||
-            securityState.sssUnlockState !== "UNLOCKED_ONCE" ||
-            (securityState.sssUnlockExpiresAt &&
-              securityState.sssUnlockExpiresAt.getTime() < Date.now())
-          ) {
-            throw new BadRequestException("SSS wallet is locked. Unlock required.");
+          let parsedTx: Transaction;
+        
+          try {
+            parsedTx = Transaction.from(dto.signedTx);
+          } catch {
+            throw new BadRequestException("Invalid signedTx");
+          }
+        
+          if (!parsedTx.from) {
+            throw new BadRequestException("Invalid signedTx: missing signer");
+          }
+        
+          if (parsedTx.from.toLowerCase() !== wallet.address.toLowerCase()) {
+            throw new BadRequestException("signedTx signer does not match SSS wallet");
+          }
+        
+          if (!parsedTx.to || parsedTx.to.toLowerCase() !== dto.toAddress.toLowerCase()) {
+            throw new BadRequestException("signedTx recipient does not match request");
+          }
+        
+          if (parsedTx.value.toString() !== dto.amount) {
+            throw new BadRequestException("signedTx amount does not match request");
+          }
+        
+          if (parsedTx.chainId !== 11155111n) {
+            throw new BadRequestException("signedTx chainId must be Sepolia");
+          }
+        
+          const provider = this.signerService.getProvider();
+          const currentNonce = await provider.getTransactionCount(wallet.address, "pending");
+        
+          if (parsedTx.nonce !== currentNonce) {
+            throw new BadRequestException(
+              `Invalid signedTx nonce: expected=${currentNonce}, received=${parsedTx.nonce}`,
+            );
           }
         
           const queuedRequest = await this.prisma.withdrawRequest.create({
@@ -625,6 +653,18 @@ export class WalletService {
               executionType: "SSS",
               queuedAt: new Date(),
               idempotencyKey: normalizedIdempotencyKey,
+              metadata: {
+                sssSignedTx: dto.signedTx,
+                sssSigningMode: "CLIENT_SIDE_SIGNED_TX",
+                sssValidatedAt: new Date().toISOString(),
+                sssValidatedFields: [
+                  "signer",
+                  "toAddress",
+                  "value",
+                  "chainId",
+                  "nonce",
+                ],
+              },
             },
             select: {
               id: true,
@@ -642,30 +682,18 @@ export class WalletService {
             withdrawRequestId: queuedRequest.id,
             walletId: wallet.id,
             userId,
-            eventType: "REQUEST_CREATED",
+            eventType: "SSS_SIGNED_TX_VALIDATED",
             actorType: "USER",
             actorId: userId,
-            message: "SSS withdraw request created",
+            message: "SSS signed transaction validated by backend policy",
             data: {
               walletType: wallet.walletType,
-              amount: dto.amount,
-              toAddress: dto.toAddress,
-              status: "QUEUED",
-            },
-          });
-        
-          await this.withdrawalAuditService.append({
-            withdrawRequestId: queuedRequest.id,
-            walletId: wallet.id,
-            userId,
-            eventType: "SSS_UNLOCKED_ONCE",
-            actorType: "USER",
-            actorId: userId,
-            message: "SSS wallet already unlocked and ready for one-time withdrawal",
-            data: {
-              walletType: wallet.walletType,
-              sssUnlockState: securityState.sssUnlockState,
-              sssUnlockExpiresAt: securityState.sssUnlockExpiresAt,
+              signingMode: "CLIENT_SIDE_SIGNED_TX",
+              signer: parsedTx.from,
+              toAddress: parsedTx.to,
+              value: parsedTx.value.toString(),
+              chainId: parsedTx.chainId.toString(),
+              nonce: parsedTx.nonce,
             },
           });
         
@@ -677,7 +705,7 @@ export class WalletService {
             userId,
             eventType: "QUEUED",
             actorType: "SYSTEM",
-            message: "Withdraw request enqueued for SSS execution",
+            message: "SSS signed transaction queued for broadcast",
             data: {
               queueId: queue.id,
               queueStatus: queue.status,
@@ -686,7 +714,7 @@ export class WalletService {
         
           return {
             mode: "SSS",
-            message: "Withdraw request queued. Worker execution will process it.",
+            message: "SSS signed transaction queued. Worker will broadcast it.",
             withdrawRequest: queuedRequest,
             queue,
           };
@@ -804,10 +832,10 @@ export class WalletService {
     };
   }
 
-  async unlockSss(
+/*   async unlockSss(
     userId: string,
     walletId: string,
-    dto: { privateKey: string }
+    dto: { privateKey: string; }
   ) {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
@@ -855,7 +883,7 @@ export class WalletService {
     return {
       message: "SSS wallet unlocked (1 transaction allowed)",
     };
-  }
+  } */
 
   async getSssStatus(userId: string, walletId: string) {
     const wallet = await this.prisma.wallet.findUnique({

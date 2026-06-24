@@ -21,7 +21,8 @@ export async function getWalletWithdraws(walletId: string, status?: string) {
 
 export async function createWithdraw(
   walletId: string,
-  payload: { toAddress: string; amount: string; otpCode?: string }
+  payload: { toAddress: string; amount: string; otpCode?: string; signedTx?: string;
+  }
 ) {
   const idempotencyKey = crypto.randomUUID();
 
