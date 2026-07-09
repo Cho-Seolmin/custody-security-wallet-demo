@@ -27,6 +27,12 @@ export type Wallet = {
     requiredApprovalCount?: number | null;
   };
 
+  export type WalletLimit = {
+    walletId: string;
+    dailyLimit: string;
+    singleTxLimit: string;
+  };
+
   export type SssStatus = {
     walletId: string;
     walletType: string;

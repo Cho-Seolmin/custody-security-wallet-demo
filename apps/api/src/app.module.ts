@@ -5,8 +5,9 @@ import { AuthModule } from "./auth/auth.module";
 import { WalletModule } from "./wallet/wallet.module";
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from "./system/system.module";
+import { SettingsModule } from "./settings/settings.module";
 
 @Module({
-  imports: [ ScheduleModule.forRoot(),PrismaModule, AuthModule, WalletModule, AdminModule, SystemModule,],
+  imports: [ ScheduleModule.forRoot(),PrismaModule, AuthModule, WalletModule, AdminModule, SystemModule, SettingsModule,],
 })
 export class AppModule {}

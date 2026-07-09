@@ -59,7 +59,6 @@ flowchart TD
     VAULT[PolicyVault Contract]
     AWS[AWS KMS]
     DFNS[DFNS MPC]
-    MEMORY[SSS Unlock Store]
 
     SEPOLIA[Sepolia]
 
@@ -97,7 +96,8 @@ flowchart TD
     POLICYEX --> VAULT
     KMS --> AWS
     MPC --> DFNS
-    SSS --> MEMORY
+    SSS --> SEPOLIA
+   
 
     SIGNER --> SEPOLIA
     VAULT --> SEPOLIA
@@ -322,6 +322,8 @@ MPC 지갑은 외부 분산 서명 제공자와 연동 가능한 구조로 구�
 
 를 분리하여 다른 지갑 타입과 독립적으로 출금 흐름을 관리합니다.
 
+MpcSettlementService는 DFNS transfer 상태를 주기적으로 조회하여 Confirmed 상태이면 WithdrawRequest를 EXECUTED로, Failed / Rejected / Cancelled 상태이면 FAILED로 동기화합니다.
+
 현재 데모에서는 DFNS를 MPC Provider로 사용합니다.
 
 ### SSS
@@ -329,10 +331,14 @@ MPC 지갑은 외부 분산 서명 제공자와 연동 가능한 구조로 구�
 Shamir's Secret Sharing 기반 지갑입니다.
 
 * 3-of-5 Secret Sharing
-* Unlock 후 1회 출금
-* 출금 완료 시 자동 Relock
+* Client-side Transaction Signing
+* Backend Signed Transaction Validation
+* Signed Transaction Broadcast via Worker
 
-구조를 구현했습니다.
+복구된 private key는 브라우저에서만 사용되며,
+서버는 signedTx만 수신하며, 원문 private key는 API 요청 본문이나 DB metadata에 저장되지 않습니다.
+
+서버는 signedTx의 signer, recipient, amount, chainId, nonce를 검증한 후 Queue에 등록합니다.
 
 ---
 
@@ -519,25 +525,38 @@ WebSocket은 상태 변경 사실만 전달합니다.
 
 ## SSS
 
-현재 데모에서는 복구된 Private Key를 서버 메모리에 일시 저장한 후 1회 출금을 수행합니다.
+현재 데모에서는 Client-side Signing 방식을 사용합니다.
 
-운영 환경에서는 다음 구조로 대체되어야 합니다.
+복구된 private key는 브라우저에서만 사용되며 서버로 전송되지 않습니다.
 
-* Client-side Signing
+실제 운영 환경에서는 다음과 같은 추가 보안이 필요합니다.
+
+* Hardware Wallet
 * HSM
 * MPC
-* Hardware Wallet
+* Secure Key Recovery Process
 
 ## MPC
 
-현재 DFNS 기반 Transfer 생성 및 EXTERNAL_PENDING 상태 관리까지 구현되어 있습니다.
+MPC 지갑은 DFNS 기반 외부 분산 서명 구조를 사용합니다.
 
-향후 확장 예정
+구현 범위:
 
-* Provider Status Polling
-* 최종 Confirmation Tracking
-* txHash 동기화
-* EXECUTED / FAILED 자동 상태 반영
+* DFNS Transfer 생성
+* EXTERNAL_PENDING 처리
+* MPC Settlement Polling
+* DFNS Status 조회
+* EXECUTED / FAILED 자동 동기화
+* txHash 저장
+* WebSocket 상태 반영
+
+이를 통해 외부 MPC Provider 상태와 내부 WithdrawRequest 상태를 동기화합니다.
+
+향후 확장 가능 항목:
+
+* Multi-provider 지원
+* Provider Failover
+* Confirmation Depth 정책
 
 ## Queue
 
@@ -559,6 +578,7 @@ WebSocket은 상태 변경 사실만 전달합니다.
 
 ```env
 DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DB_NAME"
+APP_BASE_URL="http://localhost:3000"
 
 JWT_SECRET="change-me"
 JWT_EXPIRES_IN="7d"
@@ -573,13 +593,24 @@ POLICY_VAULT_ADDRESS="0x..."
 
 AWS_REGION="ap-northeast-2"
 AWS_KMS_KEY_ID="your-kms-key-id"
+AWS_ACCESS_KEY_ID="your-access-key-id"
+AWS_SECRET_ACCESS_KEY="your-secret-access-key"
 
 DFNS_BASE_URL="https://api.dfns.io"
 DFNS_AUTH_TOKEN="..."
 DFNS_WALLET_ID="..."
 DFNS_NETWORK="EthereumSepolia"
+DFNS_ORG_ID="your-org-id"
+DFNS_CREDENTIAL_ID="your-credential-id"
+DFNS_PRIVATE_KEY_PATH="/path/to/private_key.pem"
 
 DEV_TOTP_SECRET=""
+```
+## Frontend .env.example
+
+```env
+VITE_API_URL="http://localhost:3000"
+VITE_SEPOLIA_RPC_URL="https://ethereum-sepolia.publicnode.com"
 ```
 
 실제 .env 파일은 Git에 포함하지 않습니다.
@@ -592,6 +623,7 @@ DEV_TOTP_SECRET=""
 
 ```bash
 cd apps/api
+cp .env.example .env
 npm install
 npx prisma generate
 npx prisma migrate dev
@@ -602,6 +634,7 @@ npm run start:dev
 
 ```bash
 cd apps/web
+cp .env.example .env
 npm install
 npm run dev
 ```
@@ -624,3 +657,5 @@ npm run dev
 * Multisig 승인 워크플로우
 * Scheduler 기반 자동 만료 처리
 * 다양한 키 관리 모델 비교
+* Client-side Transaction Signing
+* Signed Transaction Validation

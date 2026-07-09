@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { register } from "../api/auth";
+import "../styles/page.css";
 
 type RegisterResponse = {
   user: {
@@ -65,44 +66,79 @@ export default function RegisterPage() {
   };
 
   return (
-    <div style={{ padding: "40px", maxWidth: "420px" }}>
-      <h1>Register</h1>
-
-      {!registerResult ? (
-        <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <input
-            type="email"
-            placeholder="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-
-          <input
-            type="password"
-            placeholder="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <button type="submit">회원가입</button>
-        </form>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <p>{message}</p>
-          <p>이메일: {registerResult.user.email}</p>
-          <p>상태: {registerResult.user.status}</p>
-          {!verified && (<button onClick={handleOpenVerifyLink}> 임시 이메일 인증 하기 </button>)}
-          <button onClick={() => navigate("/login")}>로그인 페이지로 이동</button>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <span className="auth-brand-mark">CS</span>
+          <span className="auth-brand-name">Custody Vault</span>
         </div>
-      )}
 
-      {!registerResult && (
-        <p style={{ marginTop: "16px" }}>
-          이미 계정이 있나요? <a href="/login">로그인</a>
-        </p>
-      )}
+        <div className="auth-title">회원가입</div>
+        <div className="auth-subtitle">
+          {registerResult
+            ? "이메일 인증을 완료하고 서비스를 이용해보세요."
+            : "이메일과 비밀번호로 새 계정을 만드세요."}
+        </div>
 
-      {error && <p style={{ color: "red", marginTop: "12px" }}>{error}</p>}
+        {!registerResult ? (
+          <>
+            <form onSubmit={handleRegister}>
+              <div className="field">
+                <label className="input-label">이메일</label>
+                <input
+                  type="email"
+                  className="input"
+                  placeholder="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label className="input-label">비밀번호</label>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn btn--primary" style={{ width: "100%" }}>
+                회원가입
+              </button>
+            </form>
+
+            <div className="auth-footer">
+              이미 계정이 있나요? <a href="/login">로그인</a>
+            </div>
+          </>
+        ) : (
+          <div>
+            {message && <div className="alert alert--info" style={{ marginBottom: "16px" }}>{message}</div>}
+
+            <div className="info-box info-box--neutral" style={{ marginBottom: "16px" }}>
+              이메일: {registerResult.user.email}
+              <br />
+              상태: {registerResult.user.status}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {!verified && (
+                <button className="btn btn--primary" onClick={handleOpenVerifyLink}>
+                  임시 이메일 인증 하기
+                </button>
+              )}
+              <button className="btn btn--secondary" onClick={() => navigate("/login")}>
+                로그인 페이지로 이동
+              </button>
+            </div>
+          </div>
+        )}
+
+        {error && <div className="alert alert--danger" style={{ marginTop: "16px" }}>{error}</div>}
+      </div>
     </div>
   );
 }

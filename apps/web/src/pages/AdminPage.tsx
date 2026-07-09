@@ -5,7 +5,8 @@ import AdminWithdrawList from "../components/AdminWithdrawList";
 import type { Me } from "../types/auth";
 import type { WithdrawItem } from "../types/wallet";
 import { useNavigate } from "react-router-dom";
-
+import AppShell from "../components/AppShell";
+import "../styles/page.css";
 
 const STATUS_OPTIONS = ["PENDING", "EXECUTED", "FAILED", "REJECTED"] as const;
 
@@ -16,23 +17,6 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const handleLogout = () => {
-  localStorage.removeItem("accessToken");
-  navigate("/login");
-  };
-  const handleRefresh = async () => {
-    try {
-      setError("");
-      setLoading(true);
-      const meData = await getMe();
-      setMe(meData);
-      await fetchWithdraws(status);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "새로고침 실패");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchWithdraws = async (nextStatus = status) => {
     const data = await getAdminWithdraws(nextStatus);
@@ -69,66 +53,64 @@ export default function AdminPage() {
   };
 
   if (loading) {
-    return <div style={{ padding: "40px" }}>로딩 중...</div>;
-  }
-  
-  if (me && me.role !== "ADMIN") {
     return (
-      <div style={{ padding: "40px" }}>
-        <h1>Admin</h1>
-        <p>관리자만 접근 가능합니다.</p>
-        <button onClick={() => navigate("/dashboard")}>대시보드로 돌아가기</button>
-      </div>
+      <AppShell>
+        <div className="loading-screen">불러오는 중...</div>
+      </AppShell>
     );
   }
-  
-  return (
-    <div style={{ padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
-      <h1>Admin Withdraw Management</h1>
 
-      <button onClick={handleRefresh}>새로고침</button>
-  
-      {me && (
-        <div
-          style={{
-            border: "1px solid #ccc",
-            borderRadius: "12px",
-            padding: "16px",
-            marginBottom: "20px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <p style={{ margin: 0 }}>이메일: {me.email}</p>
-          <p style={{ margin: 0 }}>권한: {me.role}</p>
-  
-          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button onClick={() => navigate("/dashboard")}>대시보드로 돌아가기</button>
-            <button onClick={handleLogout}>로그아웃</button>
+  if (me && me.role !== "ADMIN") {
+    return (
+      <AppShell>
+        <div className="page">
+          <div className="card section-card" style={{ textAlign: "center", padding: "48px 24px" }}>
+            <h1 style={{ fontSize: "18px", marginBottom: "8px" }}>Admin</h1>
+            <p style={{ color: "var(--color-text-muted)", marginBottom: "16px" }}>
+              관리자만 접근 가능합니다.
+            </p>
+            <button className="btn btn--primary" onClick={() => navigate("/dashboard")}>
+              대시보드로 돌아가기
+            </button>
           </div>
         </div>
-      )}
-  
-      <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap" }}>
-        {STATUS_OPTIONS.map((option) => (
-          <button
-            key={option}
-            onClick={() => handleChangeStatus(option)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: "8px",
-              fontWeight: status === option ? "bold" : "normal",
-            }}
-          >
-            {option}
-          </button>
-        ))}
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <div className="page">
+        <header className="page__header">
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <h1 className="page__title">Admin Withdraw Management</h1>
+              {me && <span className="badge badge--primary">{me.role}</span>}
+            </div>
+            <p className="page__subtitle">
+              {me?.email ? `${me.email} · ` : ""}출금 요청을 검토하고 승인 또는 거절하세요.
+            </p>
+          </div>
+        </header>
+
+        <div className="tab-group">
+          {STATUS_OPTIONS.map((option) => (
+            <button
+              key={option}
+              className={`tab${status === option ? " is-active" : ""}`}
+              onClick={() => handleChangeStatus(option)}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <div className="card section-card">
+          <AdminWithdrawList items={items} onRefresh={() => fetchWithdraws(status)} />
+        </div>
+
+        {error && <div className="alert alert--danger">{error}</div>}
       </div>
-  
-      <AdminWithdrawList items={items} onRefresh={() => fetchWithdraws(status)} />
-  
-      {error && <p style={{ color: "red" }}>{error}</p>}
-    </div>
+    </AppShell>
   );
 }

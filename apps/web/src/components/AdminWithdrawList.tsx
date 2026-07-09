@@ -1,5 +1,7 @@
 import { approveWithdraw, rejectWithdraw } from "../api/admin";
 import type { WithdrawItem } from "../types/wallet";
+import { formatEther } from "ethers";
+import "../styles/page.css";
 
 type Props = {
   items: WithdrawItem[];
@@ -7,24 +9,21 @@ type Props = {
 };
 
 export default function AdminWithdrawList({ items, onRefresh }: Props) {
-  const getStatusColor = (status: string) => {
+  const getStatusTone = (status: string) => {
     switch (status) {
       case "EXECUTED":
-        return "green";
+        return "success";
       case "FAILED":
-        return "red";
+        return "danger";
       case "PENDING":
-        return "orange";
-      case "REJECTED":
-        return "gray";
-      case "EXPIRED":
-        return "purple";
-      case "QUEUED":
-        return "blue";
+        return "warning";
       case "PROCESSING":
-        return "dodgerblue";
+      case "QUEUED":
+        return "primary";
+      case "REJECTED":
+      case "EXPIRED":
       default:
-        return "black";
+        return "gray";
     }
   };
 
@@ -66,41 +65,55 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
   };
 
   if (items.length === 0) {
-    return <p>출금 요청이 없습니다.</p>;
+    return <p className="empty-state">출금 요청이 없습니다.</p>;
   }
 
   return (
-    <div style={{ marginTop: "20px" }}>
+    <div className="history-list">
       {items.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            border: "1px solid #ccc",
-            borderRadius: "12px",
-            padding: "16px",
-            marginBottom: "16px",
-          }}
-        >
-          <div>ID: {item.id}</div>
-          <div>금액(wei): {item.amount}</div>
-          <div>받는 주소: {item.toAddress}</div>
-          <div>
-            상태:{" "}
-            <strong style={{ color: getStatusColor(item.status) }}>
+        <div key={item.id} className="history-row">
+          <div className="history-row__top">
+            <span className="history-row__amount">
+              {formatEther(item.amount)} ETH
+            </span>
+            <span className={`badge badge--${getStatusTone(item.status)}`}>
               {getStatusLabel(item)}
-            </strong>
+            </span>
           </div>
-          <div>승인자: {item.approvedBy ?? "-"}</div>
-          <div>txHash: {item.txHash ?? "-"}</div>
-          <div>생성일: {new Date(item.createdAt).toLocaleString()}</div>
+
+          <div className="history-row__meta" style={{ marginBottom: "8px" }}>
+            <div>
+              <span className="history-row__meta-label">요청 ID</span>
+              {item.id}
+            </div>
+            <div>
+              <span className="history-row__meta-label">받는 주소</span>
+              {item.toAddress}
+            </div>
+            <div>
+              <span className="history-row__meta-label">승인자</span>
+              {item.approvedBy ?? "-"}
+            </div>
+            <div>
+              <span className="history-row__meta-label">txHash</span>
+              {item.txHash ?? "-"}
+            </div>
+            <div>
+              <span className="history-row__meta-label">생성일</span>
+              {new Date(item.createdAt).toLocaleString()}
+            </div>
+            <div>
+              <span className="history-row__meta-label">금액(wei)</span>
+              {item.amount}
+            </div>
+          </div>
 
           {item.status === "PENDING" && (
-            <div style={{ marginTop: "12px" }}>
-              <button onClick={() => handleApprove(item.id)}>승인</button>
-              <button
-                onClick={() => handleReject(item.id)}
-                style={{ marginLeft: "8px" }}
-              >
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button className="btn btn--primary" onClick={() => handleApprove(item.id)}>
+                승인
+              </button>
+              <button className="btn btn--danger" onClick={() => handleReject(item.id)}>
                 거절
               </button>
             </div>

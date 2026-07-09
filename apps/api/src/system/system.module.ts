@@ -1,11 +1,13 @@
 import { Module } from "@nestjs/common";
 import { SystemController } from "./system.controller";
+import { SystemStatusController } from "./system-status.controller";
 import { SystemService } from "./system.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { SignerService } from "../wallet/signer.service";
+import { WalletModule } from "../wallet/wallet.module";
 
 @Module({
-  controllers: [SystemController],
-  providers: [SystemService, PrismaService, SignerService],
+  imports: [WalletModule],
+  controllers: [SystemController, SystemStatusController],
+  providers: [SystemService, PrismaService],
 })
 export class SystemModule {}

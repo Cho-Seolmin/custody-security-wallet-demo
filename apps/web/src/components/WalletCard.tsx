@@ -1,10 +1,14 @@
 import {  useEffect, useState,useRef } from "react";
 import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, } from "../api/wallet";
+import { getPreferences } from "../api/settings";
 import type { Wallet as WalletType, WalletBalance, WithdrawItem } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
 import { Wallet ,formatEther, isAddress, parseEther, JsonRpcProvider  } from "ethers";
 import { shortenAddress } from "../utils/address";
 import { socket } from "../lib/socket";
+import "../styles/page.css";
+
+const AUTO_REFRESH_INTERVAL_MS = 20_000;
 
 type Props = {
   wallet: WalletType;
@@ -27,6 +31,9 @@ export default function WalletCard({ wallet }: Props) {
   const [sssPrivateKey, setSssPrivateKey] = useState("");
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const withdrawLockRef = useRef(false);
+
+  const [showGuide, setShowGuide] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
   const securityDescriptions: Record<string, string> = {
     BACKEND_SEC: `화이트리스트 기반 출금 제어 지갑
@@ -102,11 +109,6 @@ export default function WalletCard({ wallet }: Props) {
   };
 
   const handleLoadWithdraws = async () => {
-    if (showWithdraws) {
-      setShowWithdraws(false);
-      return;
-    }
-  
     try {
       setMessage("");
       const data = await getWalletWithdraws(wallet.id);
@@ -282,6 +284,40 @@ export default function WalletCard({ wallet }: Props) {
   };
 
   useEffect(() => {
+    handleCheckBalance();
+    handleLoadWithdraws();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getPreferences()
+      .then((data) => {
+        if (!cancelled) setAutoRefreshEnabled(data.autoRefreshEnabled !== false);
+      })
+      .catch(() => {
+        // 환경설정 조회 실패 시 기본값(자동 새로고침 사용) 유지
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
+
+    const timer = setInterval(() => {
+      handleCheckBalance();
+      handleLoadWithdraws();
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefreshEnabled, wallet.id]);
+
+  useEffect(() => {
     const handleWithdrawUpdated = async (payload: {
       withdrawRequestId: string;
       walletId: string;
@@ -319,122 +355,127 @@ export default function WalletCard({ wallet }: Props) {
   const displayAddress = balance?.address ?? wallet.address;
 
   return (
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "100%",
-          boxSizing: "border-box",
-          overflowWrap: "break-word",
-          wordBreak: "break-word",
-          border: "1px solid #ccc",
-          borderRadius: "12px",
-          padding: "16px",
-          marginBottom: "20px",
-        }}
-      >
-      <h2>{wallet.walletType}</h2>
-      <div style={{ marginTop: "8px" }}>
-        주소: {shortenAddress(displayAddress)}
-        <button
-          onClick={() => copy(displayAddress)}
-          style={{ marginLeft: "8px" }}
+      <div className="card" style={{ overflowWrap: "break-word", wordBreak: "break-word" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "10px",
+            marginBottom: "16px",
+          }}
         >
-          복사
-        </button>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <div className="card-title">{wallet.walletType}</div>
+              <button
+                className="btn btn--ghost"
+                style={{ height: "28px", padding: "0 10px", fontSize: "12px" }}
+                onClick={() => setShowGuide((prev) => !prev)}
+              >
+                {showGuide ? "지갑 사용 설명서 닫기" : "지갑 사용 설명서 보기"}
+              </button>
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--color-text-faint)", marginTop: "4px" }}>
+              ID: {wallet.id}
+            </div>
+          </div>
+          <span className="badge badge--gray">
+            {balance ? "RUNTIME_RESOLVED" : "DB_ADDRESS"}
+          </span>
+        </div>
+
+        {showGuide && (
+          <div className="info-box info-box--neutral" style={{ marginBottom: "16px" }}>
+            💡 {wallet.walletType} 지갑 보안 기능 사용 설명서:
+            <div style={{ marginTop: "6px", whiteSpace: "pre-line" }}>
+              {securityDescriptions[wallet.walletType] ?? "설명 추가 필요"}
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "8px",
+            background: "var(--color-gray-soft)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "10px",
+            padding: "10px 14px",
+            marginBottom: "16px",
+          }}
+        >
+          <div style={{ fontSize: "13.5px", fontWeight: 600 }}>
+            주소: {shortenAddress(displayAddress)}
+          </div>
+          <button className="btn btn--ghost" style={{ height: "30px", padding: "0 12px" }} onClick={() => copy(displayAddress)}>
+            복사
+          </button>
+        </div>
 
         {balance?.address && wallet.address !== balance.address && (
-          <div style={{ fontSize: "12px", color: "gray", marginTop: "4px" }}>
+          <div style={{ fontSize: "12px", color: "var(--color-text-faint)", marginTop: "-10px", marginBottom: "16px" }}>
             DB 주소: {shortenAddress(wallet.address)}
           </div>
         )}
 
-        <div style={{ fontSize: "12px", color: "gray" }}>
-          source: {balance ? "RUNTIME_RESOLVED" : "DB_ADDRESS"}
-        </div>
-      </div>
+        <hr className="divider" style={{ margin: "4px 0 20px" }} />
 
-
-      <div>ID: {wallet.id}</div>
-
-      <div style={{ marginTop: "12px" }}>
-        <button onClick={handleCheckBalance}>잔액 조회</button>
-        <button onClick={handleLoadWithdraws} style={{ marginLeft: "8px" }}>
-          {showWithdraws ? "출금 이력 닫기" : "출금 이력 보기"}
-        </button>
-      </div>
-
-      {balance && (
-        <div style={{ marginTop: "12px" }}>
-          <strong>잔액:</strong>
-          <div style={{ wordBreak: "break-all" }}>
-            {balance.balanceWei} wei
-          </div>
-          <div>{formatEther(balance.balanceWei)} ETH</div>
-        </div>
-      )}
+        <div className="wallet-grid">
+          {/* 왼쪽: 지갑 제어 (화이트리스트 관리 / 서명 / 출금 요청) */}
+          <div className="wallet-grid__col">
+            <div className="card-subtitle">지갑 관리</div>
 
 {wallet.walletType === "BACKEND_SEC" && (
-  <div style={{ marginTop: "16px" }}>
-    <h4>화이트리스트 관리</h4>
+  <div style={{ marginBottom: "20px" }}>
+    <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>화이트리스트 관리</h4>
 
-    <input
-      type="text"
-      value={whitelistInput}
-      onChange={(e) => setWhitelistInput(e.target.value)}
-      placeholder="허용할 주소 입력"
-      style={{
-        width: "100%",
-        boxSizing: "border-box",
-        marginBottom: "8px",
-      }}
-    />
+    <div className="field">
+      <input
+        type="text"
+        className="input"
+        value={whitelistInput}
+        onChange={(e) => setWhitelistInput(e.target.value)}
+        placeholder="허용할 주소 입력"
+      />
+    </div>
 
     <div
       style={{
         display: "flex",
         flexWrap: "wrap",
         gap: "8px",
-        marginBottom: "8px",
+        marginBottom: "12px",
       }}
     >
-      <button onClick={handleAddWhitelistAddress}>주소 추가</button>
+      <button className="btn btn--secondary" onClick={handleAddWhitelistAddress}>주소 추가</button>
 
-      <button onClick={handleLoadWhitelist}>
+      <button className="btn btn--ghost" onClick={handleLoadWhitelist}>
         화이트리스트 불러오기
       </button>
 
-      <button onClick={handleSaveWhitelist}>
+      <button className="btn btn--primary" onClick={handleSaveWhitelist}>
         화이트리스트 저장
       </button>
     </div>
 
     {whitelistAddresses.length > 0 && (
-      <div style={{ marginTop: "8px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {whitelistAddresses.map((address) => (
-          <div
-            key={address}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              border: "1px solid #eee",
-              borderRadius: "8px",
-              padding: "8px",
-              marginBottom: "6px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-              }}
-            >
-              <span>{shortenAddress(address)}</span>
-              <button onClick={() => copy(address)}>
+          <div key={address} className="chip" style={{ justifyContent: "space-between" }}>
+            <span>{shortenAddress(address)}</span>
+
+            <div style={{ display: "flex", gap: "4px" }}>
+              <button className="chip-btn" onClick={() => copy(address)}>
                 복사
               </button>
 
               <button
+                className="chip-btn"
                 onClick={() => handleRemoveWhitelistAddress(address)}
               >
                 삭제
@@ -448,147 +489,148 @@ export default function WalletCard({ wallet }: Props) {
 )}
 
 {wallet.walletType === "SSS" && (
-  <div style={{ marginTop: "16px" }}>
-    <h4>SSS Client-side Signing</h4>
+  <div style={{ marginBottom: "20px" }}>
+    <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>SSS Client-side Signing</h4>
 
-    <div
-      style={{
-        border: "1px solid #eee",
-        borderRadius: "8px",
-        padding: "12px",
-        marginBottom: "12px",
-        background: "#fafafa",
-        fontSize: "13px",
-        color: "#555",
-      }}
-    >
+    <div className="info-box info-box--neutral" style={{ marginBottom: "12px" }}>
       private key는 서버로 저장되지 않고, 브라우저에서 signedTx 생성에만 사용됩니다.
       서버는 signedTx의 signer, recipient, value, chainId, nonce를 검증한 뒤 broadcast합니다.
     </div>
 
-    <input
-      type="password"
-      value={sssPrivateKey}
-      onChange={(e) => setSssPrivateKey(e.target.value)}
-      placeholder="복구된 private key 입력"
-      style={{
-        width: "100%",
-        boxSizing: "border-box",
-        marginBottom: "8px",
-      }}
-    />
+    <div className="field">
+      <input
+        type="password"
+        className="input"
+        value={sssPrivateKey}
+        onChange={(e) => setSssPrivateKey(e.target.value)}
+        placeholder="복구된 private key 입력"
+      />
+    </div>
   </div>
 )}
 
-      <div style={{ marginTop: "16px" }}>
-        <h4>출금 요청</h4>
+            <div>
+              <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>출금 요청</h4>
 
-        <input
-          type="text"
-          value={toAddress}
-          onChange={(e) => setToAddress(e.target.value)}
-          placeholder="받는 주소"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            marginBottom: "8px",
-          }}
-        />
+              <div className="field">
+                <label className="input-label">받는 주소</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={toAddress}
+                  onChange={(e) => setToAddress(e.target.value)}
+                  placeholder="받는 주소"
+                />
+              </div>
 
-        <input
-          type="text"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="금액 (ETH)"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            marginBottom: "8px",
-          }}
-        />
-        <input
-          type="text"
-          value={otpCode}
-          onChange={(e) => setOtpCode(e.target.value)}
-          placeholder="OTP 코드 (0.01 ETH 이상 출금 시 필요)"
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            marginBottom: "8px",
-          }}
-        />
+              <div className="field">
+                <label className="input-label">금액 (ETH)</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="금액 (ETH)"
+                />
+              </div>
 
-        <button onClick={handleWithdraw} disabled={withdrawLoading}>
-          {withdrawLoading ? "출금 요청 중..." : "출금 요청"}
-        </button>
-      </div>
+              <div className="field">
+                <label className="input-label">OTP 코드 (0.01 ETH 이상 출금 시 필요)</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  placeholder="OTP 코드"
+                />
+              </div>
 
-      {message && (
-        <p style={{ marginTop: "12px", color: "blue" }}>
-          {message}
-        </p>
-      )}
+              <button className="btn btn--primary" style={{ width: "100%" }} onClick={handleWithdraw} disabled={withdrawLoading}>
+                {withdrawLoading ? "출금 요청 중..." : "출금 요청"}
+              </button>
+            </div>
 
-{showWithdraws && (
-  <div>
-    <WithdrawHistory items={withdraws.slice(0, visibleWithdrawCount)} />
+            {message && (
+              <div className="alert alert--info" style={{ marginTop: "16px" }}>
+                {message}
+              </div>
+            )}
+          </div>
 
-    {withdraws.length > 0 && (
-      <div style={{ marginTop: "8px", fontSize: "13px", color: "#666" }}>
-        총 {withdraws.length}개 중{" "}
-        {Math.min(visibleWithdrawCount, withdraws.length)}개 표시 중
-      </div>
-    )}
+          {/* 오른쪽: 조회 & 활동내역 (잔액 / 출금 이력) */}
+          <div className="wallet-grid__col">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "12px",
+              }}
+            >
+              <div className="card-subtitle" style={{ marginBottom: 0 }}>
+                조회 &amp; 활동내역
+              </div>
+              <button
+                className="btn btn--ghost"
+                style={{ height: "30px", padding: "0 12px" }}
+                onClick={() => {
+                  handleCheckBalance();
+                  handleLoadWithdraws();
+                }}
+              >
+                새로고침
+              </button>
+            </div>
 
-    {visibleWithdrawCount < withdraws.length && (
-      <button
-        onClick={() => setVisibleWithdrawCount((prev) => prev + 5)}
-        style={{
-          marginTop: "8px",
-          padding: "8px 12px",
-          borderRadius: "8px",
-          border: "1px solid #ccc",
-          cursor: "pointer",
-        }}
-      >
-        더보기
-      </button>
-    )}
-  </div>
-)}
+            {balance && (
+              <div
+                style={{
+                  marginBottom: "16px",
+                  padding: "14px 16px",
+                  borderRadius: "10px",
+                  background: "var(--color-primary-soft)",
+                  border: "1px solid var(--color-primary-border)",
+                }}
+              >
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-primary-hover)", marginBottom: "4px" }}>
+                  잔액
+                </div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--color-text)" }}>
+                  {formatEther(balance.balanceWei)} ETH
+                </div>
+                <div style={{ wordBreak: "break-all", fontSize: "11.5px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                  {balance.balanceWei} wei
+                </div>
+              </div>
+            )}
 
-      <div
-        style={{
-          marginTop: "16px",
-          padding: "12px",
-          borderRadius: "10px",
-          background: "#f5f7fb",
-          border: "1px solid #e0e6f0",
-          fontSize: "13px",
-          color: "#444",
-        }}
-      >
-        💡 {wallet.walletType} 지갑 보안 기능 사용 설명서:
-        <div style={{ marginTop: "6px", color: "#666" ,whiteSpace: "pre-line",}}>
-         {securityDescriptions[wallet.walletType] ?? "설명 추가 필요"}
+            {showWithdraws && (
+              <div>
+                <div className="scroll-panel">
+                  <WithdrawHistory items={withdraws.slice(0, visibleWithdrawCount)} />
+                </div>
+
+                {withdraws.length > 0 && (
+                  <div style={{ marginTop: "8px", fontSize: "12.5px", color: "var(--color-text-muted)" }}>
+                    총 {withdraws.length}개 중{" "}
+                    {Math.min(visibleWithdrawCount, withdraws.length)}개 표시 중
+                  </div>
+                )}
+
+                {visibleWithdrawCount < withdraws.length && (
+                  <button
+                    className="btn btn--secondary"
+                    onClick={() => setVisibleWithdrawCount((prev) => prev + 5)}
+                    style={{ marginTop: "10px" }}
+                  >
+                    더보기
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      <div
-        style={{
-          marginTop: "12px",
-          padding: "12px",
-          borderRadius: "10px",
-          background: "#fff8e6",
-          border: "1px solid #ffe58f",
-          fontSize: "13px",
-          color: "#8c6d1f",
-        }}
-      >
-        🔐 Risk-Based Security
-        <div style={{ marginTop: "6px" }}>
-          0.01 ETH 이상 고액 출금은 OTP 추가 인증 후 진행됩니다.
-        </div>
-      </div>
+
     </div>
 
   );

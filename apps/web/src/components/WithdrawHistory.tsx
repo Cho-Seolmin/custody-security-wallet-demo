@@ -1,30 +1,28 @@
 import type { WithdrawItem } from "../types/wallet";
 import { formatEther } from "ethers";
 import { shortenAddress } from "../utils/address";
+import "../styles/page.css";
 
 type Props = {
   items: WithdrawItem[];
 };
 
 export default function WithdrawHistory({ items }: Props) {
-  const getStatusColor = (status: string) => {
+  const getStatusTone = (status: string) => {
     switch (status) {
       case "EXECUTED":
-        return "green";
+        return "success";
       case "FAILED":
-        return "red";
+        return "danger";
       case "PENDING":
-        return "orange";
-      case "REJECTED":
-        return "gray";
-      case "EXPIRED":
-        return "purple";
-      case "QUEUED":
-        return "blue";
+        return "warning";
       case "PROCESSING":
-        return "dodgerblue";
+      case "QUEUED":
+        return "primary";
+      case "REJECTED":
+      case "EXPIRED":
       default:
-        return "black";
+        return "gray";
     }
   };
 
@@ -41,45 +39,56 @@ export default function WithdrawHistory({ items }: Props) {
   };
 
   if (items.length === 0) {
-    return <p>출금 이력이 없습니다.</p>;
+    return <p className="empty-state">출금 이력이 없습니다.</p>;
   }
 
   return (
-    <div style={{ marginTop: "12px" }}>
-      <h4>출금 이력</h4>
-      <ul style={{ paddingLeft: "20px" }}>
+    <div>
+      <h4 style={{ marginBottom: "10px", fontSize: "14px" }}>출금 이력</h4>
+
+      <div className="history-list">
         {items.map((item) => (
-          <li key={item.id} style={{ marginBottom: "10px" }}>
-            <div>
-              상태:{" "}
-              <strong style={{ color: getStatusColor(item.status) }}>
+          <div key={item.id} className="history-row">
+            <div className="history-row__top">
+              <span className="history-row__amount">
+                {formatEther(item.amount)} ETH
+              </span>
+              <span className={`badge badge--${getStatusTone(item.status)}`}>
                 {getStatusLabel(item)}
-              </strong>
+              </span>
             </div>
 
-            <div>금액(ETH): {formatEther(item.amount)}</div>
-            <div>받는 주소: {shortenAddress(item.toAddress)}</div>
-            <div>승인자: {item.approvedBy ?? "-"}</div>
-
-            <div>
-              txHash:{" "}
-              {item.txHash ? (
-                <a
-                  href={`https://sepolia.etherscan.io/tx/${item.txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {item.txHash.slice(0, 10)}...
-                </a>
-              ) : (
-                "-"
-              )}
+            <div className="history-row__meta">
+              <div>
+                <span className="history-row__meta-label">받는 주소</span>
+                {shortenAddress(item.toAddress)}
+              </div>
+              <div>
+                <span className="history-row__meta-label">승인자</span>
+                {item.approvedBy ?? "-"}
+              </div>
+              <div>
+                <span className="history-row__meta-label">txHash</span>
+                {item.txHash ? (
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${item.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {item.txHash.slice(0, 10)}...
+                  </a>
+                ) : (
+                  "-"
+                )}
+              </div>
+              <div>
+                <span className="history-row__meta-label">생성일</span>
+                {new Date(item.createdAt).toLocaleString()}
+              </div>
             </div>
-
-            <div>생성일: {new Date(item.createdAt).toLocaleString()}</div>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }

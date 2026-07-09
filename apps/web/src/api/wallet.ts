@@ -55,6 +55,11 @@ export async function getWalletWhitelist(walletId: string) {
   return res.data;
 }
 
+export async function getWalletLimits(walletId: string) {
+  const res = await api.get(`/wallets/${walletId}/limits`);
+  return res.data;
+}
+
 export async function getSssStatus(walletId: string) {
   const res = await api.get(`/wallets/${walletId}/sss/status`);
   return res.data;

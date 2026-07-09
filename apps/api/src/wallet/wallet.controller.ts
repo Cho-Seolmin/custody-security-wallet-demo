@@ -29,7 +29,13 @@ export class WalletController {
     return this.walletService.getBalance(req.user.sub, id);
   }
 
-  @Patch(":id/limits")
+  @Get(":id/limits")
+@UseGuards(JwtAuthGuard)
+getLimits(@Req() req: any, @Param("id") id: string) {
+  return this.walletService.getLimits(req.user.sub, id);
+}
+
+@Patch(":id/limits")
 @UseGuards(JwtAuthGuard)
 updateLimits(@Req() req: any, @Param("id") id: string, @Body() dto: UpdateLimitsDto) {
   return this.walletService.updateLimits(req.user.sub, id, dto);

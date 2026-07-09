@@ -31,6 +31,11 @@ enum WalletType {
   POLICY_GUARD
 }
 
+enum BalanceUnit {
+  ETH
+  WEI
+}
+
 enum WithdrawStatus {
   PENDING
   APPROVED
@@ -72,8 +77,22 @@ model User {
   status       UserStatus @default(PENDING)
   createdAt    DateTime   @default(now())
 
-  wallets   Wallet[]
-  approvals AdminApproval[]
+  wallets    Wallet[]
+  approvals  AdminApproval[]
+  preference UserPreference?
+}
+
+model UserPreference {
+  id                  String      @id @default(cuid())
+  userId              String      @unique
+  defaultWalletId     String?
+  balanceUnit         BalanceUnit @default(ETH)
+  autoRefreshEnabled  Boolean     @default(true)
+  inAppNotifications  Boolean     @default(true)
+  emailNotifications  Boolean     @default(false)
+  updatedAt           DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Wallet {

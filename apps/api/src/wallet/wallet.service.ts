@@ -72,30 +72,34 @@ export class WalletService {
   
     return Promise.all(
       wallets.map(async (wallet) => {
+        // Live address resolution hits an external signer/KMS/MPC provider.
+        // If that provider is temporarily unreachable or misconfigured, we
+        // still want the wallet list to render using the last known address
+        // instead of taking down the whole endpoint for every wallet.
         if (wallet.walletType === "KMS") {
-          const resolvedAddress = await this.kmsService.getAddress();
-          return {
-            ...wallet,
-            resolvedAddress,
-            addressSource: "KMS",
-          };
+          try {
+            const resolvedAddress = await this.kmsService.getAddress();
+            return { ...wallet, resolvedAddress, addressSource: "KMS" };
+          } catch {
+            return { ...wallet, resolvedAddress: wallet.address, addressSource: "KMS_UNAVAILABLE" };
+          }
         }
   
         if (wallet.walletType === "BACKEND_SEC" || wallet.walletType === "MULTISIG") {
-          const resolvedAddress = await this.signerService.getSignerAddress();
-          return {
-            ...wallet,
-            resolvedAddress,
-            addressSource: "BACKEND_SIGNER",
-          };
+          try {
+            const resolvedAddress = await this.signerService.getSignerAddress();
+            return { ...wallet, resolvedAddress, addressSource: "BACKEND_SIGNER" };
+          } catch {
+            return { ...wallet, resolvedAddress: wallet.address, addressSource: "BACKEND_SIGNER_UNAVAILABLE" };
+          }
         }
         if (wallet.walletType === "MPC") {
-          const resolvedAddress = await this.mpcService.getWalletAddress();
-          return {
-            ...wallet,
-            resolvedAddress,
-            addressSource: "DFNS_WALLET",
-          };
+          try {
+            const resolvedAddress = await this.mpcService.getWalletAddress();
+            return { ...wallet, resolvedAddress, addressSource: "DFNS_WALLET" };
+          } catch {
+            return { ...wallet, resolvedAddress: wallet.address, addressSource: "DFNS_WALLET_UNAVAILABLE" };
+          }
         }
   
         return {
@@ -168,6 +172,15 @@ export class WalletService {
         "Failed to fetch balance from RPC provider",
       );
     }
+  }
+
+  async getLimits(userId: string, walletId: string) {
+    const wallet = await this.prisma.wallet.findUnique({ where: { id: walletId } });
+
+    if (!wallet) throw new NotFoundException("Wallet not found");
+    if (wallet.userId !== userId) throw new ForbiddenException("Not your wallet");
+
+    return this.prisma.walletLimit.findUnique({ where: { walletId } });
   }
 
   async updateLimits(

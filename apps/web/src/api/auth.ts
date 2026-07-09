@@ -14,3 +14,8 @@ export async function register(email: string, password: string) {
   const res = await api.post("/auth/register", { email, password });
   return res.data;
 }
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const res = await api.patch("/auth/password", { currentPassword, newPassword });
+  return res.data;
+}

@@ -5,6 +5,7 @@ import { LoginDto } from "./dto/login.dto";
 import { UseGuards, Req } from "@nestjs/common";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { UpdateWalletAddressDto } from "./dto/update-wallet-address.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 
 
 
@@ -32,5 +33,11 @@ export class AuthController {
   getMe(@Req() req: any) {
     return this.auth.getMe(req.user.sub);
   }
- 
+
+  @Patch("password")
+  @UseGuards(JwtAuthGuard)
+  changePassword(@Req() req: any, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(req.user.sub, dto.currentPassword, dto.newPassword);
+  }
+
 }

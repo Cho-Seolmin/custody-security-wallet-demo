@@ -74,6 +74,31 @@ export class AuthService {
     return { accessToken };
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    if (!newPassword || newPassword.length < 4) {
+      throw new BadRequestException("새 비밀번호는 4자 이상이어야 합니다.");
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException("사용자를 찾을 수 없습니다.");
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) throw new UnauthorizedException("현재 비밀번호가 올바르지 않습니다.");
+
+    const isSameAsCurrent = await bcrypt.compare(newPassword, user.passwordHash);
+    if (isSameAsCurrent) {
+      throw new BadRequestException("새 비밀번호는 현재 비밀번호와 달라야 합니다.");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    return { ok: true, message: "비밀번호가 변경되었습니다." };
+  }
+
   async getMe(userId: string) {
     return this.prisma.user.findUnique({
       where: { id: userId },

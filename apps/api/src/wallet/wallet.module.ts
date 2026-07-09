@@ -50,6 +50,9 @@ import { WithdrawGateway } from "./withdraw.gateway";
     QueueService,
     WithdrawalAuditService,
     WithdrawGateway,
+    SignerService,
+    KmsService,
+    MpcService,
   ],
 })
 export class WalletModule {}

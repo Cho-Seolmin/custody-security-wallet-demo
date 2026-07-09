@@ -1,15 +1,28 @@
 import { useState } from "react";
 import { shortenAddress } from "../utils/address";
+import "../styles/page.css";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7";
+
+const CHAIN_LABELS: Record<string, string> = {
+  [SEPOLIA_CHAIN_ID]: "Sepolia Testnet",
+};
 
 export default function WalletConnect() {
   const [account, setAccount] = useState("");
   const [chainId, setChainId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const copy = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const [copied, setCopied] = useState(false);
+
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // 클립보드 접근 실패는 조용히 무시
+    }
   };
 
   const handleConnect = async () => {
@@ -49,33 +62,78 @@ export default function WalletConnect() {
   return (
     <div
       style={{
-        border: "1px solid #ccc",
+        border: "1px solid var(--color-border)",
         borderRadius: "12px",
-        padding: "16px",
+        padding: "18px 20px",
         marginBottom: "20px",
+        background: "var(--color-gray-soft)",
       }}
     >
-      <h2>MetaMask 연결</h2>
-
-      {account ? (
-        <>
-          <p>연결 상태: 연결됨</p>
-          <p>
-            현재 연결 주소: {shortenAddress(account)}
-            <button onClick={() => copy(account)}>Copy</button>
-          </p>
-        </>
-      ) : (
-        <p>연결된 지갑이 없습니다.</p>
-      )}
-
-      <p>현재 네트워크: {chainId || "-"}</p>
-      <div style={{ display: "flex", gap: "8px" }}>
-        <button onClick={handleConnect}>지갑 연결</button>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "10px",
+          marginBottom: "14px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span
+            style={{
+              width: "34px",
+              height: "34px",
+              borderRadius: "9px",
+              background: "var(--color-card)",
+              border: "1px solid var(--color-border)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "17px",
+              flexShrink: 0,
+            }}
+          >
+            🦊
+          </span>
+          <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>MetaMask 연결</h3>
+        </div>
+        <span className={`badge badge--${account ? "success" : "gray"}`}>
+          {account ? "연결됨" : "연결 안됨"}
+        </span>
       </div>
 
-      {message && <p style={{ color: "blue", marginTop: "10px" }}>{message}</p>}
-      {error && <p style={{ color: "red", marginTop: "10px" }}>{error}</p>}
+      <div className="history-row__meta" style={{ marginBottom: "16px" }}>
+        <div>
+          <span className="history-row__meta-label">지갑 주소</span>
+          {account ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              {shortenAddress(account)}
+              <button
+                type="button"
+                className="chip-btn"
+                onClick={() => copy(account)}
+                style={{ border: "1px solid var(--color-border)" }}
+              >
+                {copied ? "복사됨" : "복사"}
+              </button>
+            </span>
+          ) : (
+            "-"
+          )}
+        </div>
+        <div>
+          <span className="history-row__meta-label">네트워크</span>
+          {chainId ? CHAIN_LABELS[chainId] ?? `알 수 없음 (${chainId})` : "-"}
+        </div>
+      </div>
+
+      <button className="btn btn--primary" onClick={handleConnect}>
+        {account ? "다시 연결" : "MetaMask로 지갑 연결"}
+      </button>
+
+      {message && <div className="alert alert--info">{message}</div>}
+      {error && <div className="alert alert--danger">{error}</div>}
     </div>
   );
 }

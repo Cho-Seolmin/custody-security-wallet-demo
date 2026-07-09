@@ -1,43 +1,107 @@
 import { useEffect, useState } from "react";
+import { formatEther } from "ethers";
 import { getMe } from "../api/auth";
-import { getWallets } from "../api/wallet";
-import WalletCard from "../components/WalletCard";
+import { getWallets, getWalletBalance, getWalletWithdraws } from "../api/wallet";
 import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
-import { useNavigate } from "react-router-dom";
 import WalletConnect from "../components/WalletConnect";
 import DepositPanel from "../components/DepositPanel";
+import AppShell from "../components/AppShell";
+import "../styles/page.css";
+
+const PENDING_STATUSES = new Set(["PENDING", "APPROVED", "QUEUED", "PROCESSING"]);
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  tone: "primary" | "success" | "warning" | "gray";
+  icon: React.ReactNode;
+}) {
+  const toneMap: Record<string, { bg: string; fg: string }> = {
+    primary: { bg: "var(--color-primary-soft)", fg: "var(--color-primary)" },
+    success: { bg: "var(--color-success-soft)", fg: "var(--color-success)" },
+    warning: { bg: "var(--color-warning-soft)", fg: "var(--color-warning)" },
+    gray: { bg: "var(--color-gray-soft)", fg: "var(--color-gray)" },
+  };
+  const colors = toneMap[tone];
+
+  return (
+    <div className="summary-card">
+      <div className="summary-card__top">
+        <span className="summary-card__label">{label}</span>
+        <span
+          className="summary-card__icon"
+          style={{ background: colors.bg, color: colors.fg }}
+        >
+          {icon}
+        </span>
+      </div>
+      <div className="summary-card__value">{value}</div>
+      {hint && <div className="summary-card__hint">{hint}</div>}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const navigate = useNavigate();
-  const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    navigate("/login");
-  };
-  const handleRefresh = async () => {
-    try {
-      setError("");
-      setLoading(true);
-  
-      const meData = await getMe();
-      setMe(meData);
-  
-      await fetchWallets();
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "새로고침 실패");
-    } finally {
-      setLoading(false);
-    }
-  };
+
+  const [totalBalanceWei, setTotalBalanceWei] = useState<bigint | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [completedCount, setCompletedCount] = useState<number | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const fetchWallets = async () => {
     const walletData = await getWallets();
     setWallets(walletData);
+    return walletData as Wallet[];
+  };
+
+  const fetchSummary = async (walletList: Wallet[]) => {
+    setSummaryLoading(true);
+    try {
+      const perWallet = await Promise.all(
+        walletList.map(async (wallet) => {
+          const [balance, withdraws] = await Promise.all([
+            getWalletBalance(wallet.id).catch(() => null),
+            getWalletWithdraws(wallet.id).catch(() => []),
+          ]);
+          return { balance, withdraws: withdraws ?? [] };
+        }),
+      );
+
+      const totalWei = perWallet.reduce((sum, { balance }) => {
+        if (!balance?.balanceWei) return sum;
+        try {
+          return sum + BigInt(balance.balanceWei);
+        } catch {
+          return sum;
+        }
+      }, 0n);
+
+      const allWithdraws = perWallet.flatMap(({ withdraws }) => withdraws);
+      const pending = allWithdraws.filter((w: { status: string }) =>
+        PENDING_STATUSES.has(w.status),
+      ).length;
+      const completed = allWithdraws.filter(
+        (w: { status: string }) => w.status === "EXECUTED",
+      ).length;
+
+      setTotalBalanceWei(totalWei);
+      setPendingCount(pending);
+      setCompletedCount(completed);
+    } finally {
+      setSummaryLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -48,7 +112,10 @@ export default function DashboardPage() {
         const meData = await getMe();
         setMe(meData);
   
-        await fetchWallets();
+        const walletData = await fetchWallets();
+        // Fire-and-forget: render the page immediately with wallet count,
+        // then fill in balance/withdraw totals as they arrive.
+        fetchSummary(walletData);
       } catch (err: any) {
         setError(err?.response?.data?.message || "데이터 조회 실패");
       } finally {
@@ -60,160 +127,120 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: "40px" }}>로딩 중...</div>;
-  }
-  const totalSlides = 1 + wallets.length;
-
-  const goPrev = () => {
-    setCurrentSlide((prev) => Math.max(prev - 1, 0));
-  };
-
-  const goNext = () => {
-    setCurrentSlide((prev) =>
-      Math.min(prev + 1, totalSlides - 1)
+    return (
+      <AppShell>
+        <div className="loading-screen">불러오는 중...</div>
+      </AppShell>
     );
-  };
-
+  }
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "100vh",
-        background: "#f5f7fb",
-        boxSizing: "border-box",
-        padding: "24px",
-      }}
-    >
-      <div
-        style={{
-          width: "600px",
-          maxWidth: "100%",
-          margin: "0 auto",
-          background: "#ffffff",
-          minHeight: "calc(100vh - 48px)",
-          padding: "32px 24px",
-          borderRadius: "16px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: "8px",
-            marginBottom: "16px",
-            flexWrap: "wrap",
-          }}
-        >
-          <button onClick={handleRefresh}>
-            새로고침
-          </button>
-
-          <button onClick={() => navigate("/admin")}>
-            관리자 페이지
-          </button>
-
-          <button onClick={handleLogout}>
-            로그아웃
-          </button>
-        </div>
-        
-        <h1 style={{ textAlign: "center", marginBottom: "20px" }}>
-          Custody Security Wallet Demo
-        </h1>
-  
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "24px",
-            gap: "12px",
-          }}
-        >
-          <button onClick={goPrev} disabled={currentSlide === 0}>
-            이전
-          </button>
-  
-          <div style={{ fontWeight: "bold" }}>
-            {currentSlide + 1} / {totalSlides}
+    <AppShell>
+      <div className="page">
+        <header className="page__header">
+          <div>
+            <h1 className="page__title">Dashboard</h1>
+            <p className="page__subtitle">
+              지갑 현황과 보안 상태를 한눈에 확인하세요.
+            </p>
           </div>
-  
-          <button
-            onClick={goNext}
-            disabled={currentSlide === totalSlides - 1}
-          >
-            다음
-          </button>
-        </div>
-  
-        <div
-          style={{
-            minHeight: "600px",
-            width: "100%",
-            maxWidth: "100%",
-            overflow: "hidden",
-            boxSizing: "border-box",
-          }}
-        >
-          {currentSlide === 0 && (
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                boxSizing: "border-box",
-              }}
-            >
-              <h2 style={{ textAlign: "center", marginTop: 0, marginBottom: "16px" }}>
-                내 프로필 페이지
-              </h2>
-  
-              {me && (
-                <div
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    border: "1px solid #ccc",
-                    borderRadius: "12px",
-                    padding: "16px",
-                    marginBottom: "20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  <h2 style={{ margin: 0 }}>내 정보</h2>
-                  <p style={{ margin: 0 }}>이메일: {me.email}</p>
-                  <p style={{ margin: 0 }}>권한: {me.role}</p>
-                  <p style={{ margin: 0 }}>상태: {me.status}</p>
-                </div>
-              )}
-  
-              <WalletConnect />
-  
-              <DepositPanel wallets={wallets} />
-            </div>
-          )}
-  
-          {currentSlide > 0 && (
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                boxSizing: "border-box",
-              }}
-            >
-              <h2 style={{ textAlign: "center", marginTop: 0, marginBottom: "16px" }}>
-                내 지갑 페이지
-              </h2>
-  
-              <WalletCard wallet={wallets[currentSlide - 1]} />
-            </div>
-          )}
-  
-          {error && <p style={{ color: "red" }}>{error}</p>}
-        </div>
+        </header>
+
+        <section className="summary-grid">
+          <SummaryCard
+            label="Total Wallets"
+            value={wallets.length}
+            hint="보유 중인 지갑 수"
+            tone="primary"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="6" width="18" height="13" rx="2.5" />
+                <path d="M3 9.5h18" />
+              </svg>
+            }
+          />
+          <SummaryCard
+            label="Total Balance"
+            value={
+              summaryLoading
+                ? "불러오는 중..."
+                : totalBalanceWei !== null
+                  ? `${formatEther(totalBalanceWei)} ETH`
+                  : "—"
+            }
+            hint="전체 지갑 합산"
+            tone="gray"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1 3 2.3c0 3-6 1.7-6 4.7 0 1.3 1.3 2.3 3 2.3s3-1 3-2.3" />
+              </svg>
+            }
+          />
+          <SummaryCard
+            label="Pending Withdraw"
+            value={summaryLoading ? "..." : pendingCount ?? "—"}
+            hint="승인 대기 &middot; 처리 중인 출금"
+            tone="warning"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3.5 2" />
+              </svg>
+            }
+          />
+          <SummaryCard
+            label="Completed Withdraw"
+            value={summaryLoading ? "..." : completedCount ?? "—"}
+            hint="완료된 출금 건수"
+            tone="success"
+            icon={
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 12.5l4.5 4.5L20 6" />
+              </svg>
+            }
+          />
+        </section>
+
+        <section className="card section-card">
+          <div className="section-header">
+            <h2>내 프로필 &amp; 입출금 연결</h2>
+          </div>
+
+          <div>
+            {me && (
+              <div
+                style={{
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  marginBottom: "20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                  background: "var(--color-gray-soft)",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "14px" }}>내 정보</h3>
+                <p style={{ margin: 0, fontSize: "13.5px", color: "var(--color-text-muted)" }}>
+                  이메일: {me.email}
+                </p>
+                <p style={{ margin: 0, fontSize: "13.5px", color: "var(--color-text-muted)" }}>
+                  권한: {me.role}
+                </p>
+                <p style={{ margin: 0, fontSize: "13.5px", color: "var(--color-text-muted)" }}>
+                  상태: {me.status}
+                </p>
+              </div>
+            )}
+
+            <WalletConnect />
+
+            <DepositPanel wallets={wallets} />
+          </div>
+
+          {error && <div className="alert alert--danger">{error}</div>}
+        </section>
       </div>
-    </div>
+    </AppShell>
   );
 }
