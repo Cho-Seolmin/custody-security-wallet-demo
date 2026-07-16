@@ -1,14 +1,12 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { ExecutorResult } from "./executor.types";
-import { MpcService } from "../mpc.service";
+import { Injectable, Logger } from '@nestjs/common';
+import { ExecutorResult } from './executor.types';
+import { MpcService } from '../mpc.service';
 
 @Injectable()
 export class MpcExecutor {
   private readonly logger = new Logger(MpcExecutor.name);
 
-  constructor(
-    private readonly mpcService: MpcService,
-  ) {}
+  constructor(private readonly mpcService: MpcService) {}
 
   async execute(params: {
     toAddress: string;
@@ -20,13 +18,13 @@ export class MpcExecutor {
     });
 
     this.logger.log(
-      `MPC execution submitted: requestId=${created.externalRequestId}`
+      `MPC execution submitted: requestId=${created.externalRequestId}`,
     );
 
     return {
-      type: "EXTERNAL_PENDING",
+      type: 'EXTERNAL_PENDING',
       externalRequestId: created.externalRequestId,
-      provider: "MPC",
+      provider: 'MPC',
       raw: created.raw,
     };
   }

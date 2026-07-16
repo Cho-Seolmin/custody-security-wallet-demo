@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import { formatEther } from "ethers";
 import { getMe } from "../api/auth";
-import { getWallets, getWalletBalance, getWalletWithdraws } from "../api/wallet";
+import { getWallets, getWalletSummary } from "../api/wallet";
 import type { Me } from "../types/auth";
 import type { Wallet } from "../types/wallet";
 import WalletConnect from "../components/WalletConnect";
 import DepositPanel from "../components/DepositPanel";
-import AppShell from "../components/AppShell";
 import "../styles/page.css";
-
-const PENDING_STATUSES = new Set(["PENDING", "APPROVED", "QUEUED", "PROCESSING"]);
 
 function SummaryCard({
   label,
@@ -66,39 +63,18 @@ export default function DashboardPage() {
     return walletData as Wallet[];
   };
 
-  const fetchSummary = async (walletList: Wallet[]) => {
+  const fetchSummary = async () => {
     setSummaryLoading(true);
     try {
-      const perWallet = await Promise.all(
-        walletList.map(async (wallet) => {
-          const [balance, withdraws] = await Promise.all([
-            getWalletBalance(wallet.id).catch(() => null),
-            getWalletWithdraws(wallet.id).catch(() => []),
-          ]);
-          return { balance, withdraws: withdraws ?? [] };
-        }),
-      );
+      const summary = await getWalletSummary();
 
-      const totalWei = perWallet.reduce((sum, { balance }) => {
-        if (!balance?.balanceWei) return sum;
-        try {
-          return sum + BigInt(balance.balanceWei);
-        } catch {
-          return sum;
-        }
-      }, 0n);
-
-      const allWithdraws = perWallet.flatMap(({ withdraws }) => withdraws);
-      const pending = allWithdraws.filter((w: { status: string }) =>
-        PENDING_STATUSES.has(w.status),
-      ).length;
-      const completed = allWithdraws.filter(
-        (w: { status: string }) => w.status === "EXECUTED",
-      ).length;
-
-      setTotalBalanceWei(totalWei);
-      setPendingCount(pending);
-      setCompletedCount(completed);
+      setTotalBalanceWei(BigInt(summary.totalBalanceWei));
+      setPendingCount(summary.pendingWithdrawCount);
+      setCompletedCount(summary.completedWithdrawCount);
+    } catch {
+      setTotalBalanceWei(null);
+      setPendingCount(null);
+      setCompletedCount(null);
     } finally {
       setSummaryLoading(false);
     }
@@ -112,10 +88,8 @@ export default function DashboardPage() {
         const meData = await getMe();
         setMe(meData);
   
-        const walletData = await fetchWallets();
-        // Fire-and-forget: render the page immediately with wallet count,
-        // then fill in balance/withdraw totals as they arrive.
-        fetchSummary(walletData);
+        await fetchWallets();
+        fetchSummary();
       } catch (err: any) {
         setError(err?.response?.data?.message || "데이터 조회 실패");
       } finally {
@@ -127,15 +101,10 @@ export default function DashboardPage() {
   }, []);
 
   if (loading) {
-    return (
-      <AppShell>
-        <div className="loading-screen">불러오는 중...</div>
-      </AppShell>
-    );
+    return <div className="loading-screen">불러오는 중...</div>;
   }
   return (
-    <AppShell>
-      <div className="page">
+    <div className="page">
         <header className="page__header">
           <div>
             <h1 className="page__title">Dashboard</h1>
@@ -241,6 +210,5 @@ export default function DashboardPage() {
           {error && <div className="alert alert--danger">{error}</div>}
         </section>
       </div>
-    </AppShell>
   );
 }

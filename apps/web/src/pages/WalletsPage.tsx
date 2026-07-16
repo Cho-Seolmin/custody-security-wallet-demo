@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getWallets } from "../api/wallet";
+import { getPreferences } from "../api/settings";
 import type { Wallet } from "../types/wallet";
 import WalletCard from "../components/WalletCard";
-import AppShell from "../components/AppShell";
 import "../styles/page.css";
 
 export default function WalletsPage() {
+  const navigate = useNavigate();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -20,8 +21,23 @@ export default function WalletsPage() {
         setLoading(true);
         setError("");
 
-        const data = await getWallets();
+        const [data, preferences] = await Promise.all([
+          getWallets(),
+          getPreferences().catch(() => null),
+        ]);
         setWallets(data);
+
+        if (!selectedWalletId && preferences?.defaultWalletId) {
+          const hasDefault = data.some(
+            (wallet: Wallet) => wallet.id === preferences.defaultWalletId,
+          );
+
+          if (hasDefault) {
+            navigate(`/wallets?walletId=${preferences.defaultWalletId}`, {
+              replace: true,
+            });
+          }
+        }
       } catch (err: any) {
         setError(err?.response?.data?.message || "지갑 목록 조회 실패");
       } finally {
@@ -30,7 +46,7 @@ export default function WalletsPage() {
     };
 
     fetchData();
-  }, []);
+  }, [navigate, selectedWalletId]);
 
   useEffect(() => {
     if (!selectedWalletId) return;
@@ -40,16 +56,11 @@ export default function WalletsPage() {
   }, [selectedWalletId, wallets]);
 
   if (loading) {
-    return (
-      <AppShell>
-        <div className="loading-screen">불러오는 중...</div>
-      </AppShell>
-    );
+    return <div className="loading-screen">불러오는 중...</div>;
   }
 
   return (
-    <AppShell>
-      <div className="page">
+    <div className="page">
         <header className="page__header">
           <div>
             <h1 className="page__title">Wallets</h1>
@@ -86,6 +97,5 @@ export default function WalletsPage() {
           </div>
         ))}
       </div>
-    </AppShell>
   );
 }

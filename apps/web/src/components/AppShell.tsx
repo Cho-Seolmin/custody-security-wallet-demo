@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { getWallets } from "../api/wallet";
 import { getMe } from "../api/auth";
 import { getPreferences } from "../api/settings";
+import { getSystemStatus } from "../api/system";
+import { getWallets } from "../api/wallet";
 import type { Wallet } from "../types/wallet";
 import type { Me } from "../types/auth";
 import { applyTheme, getStoredTheme } from "../lib/theme";
+import { logout } from "../api/auth";
 import { socket } from "../lib/socket";
 import {
   addStoredNotification,
@@ -142,8 +144,6 @@ export default function AppShell({ children }: AppShellProps) {
 
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [me, setMe] = useState<Me | null>(null);
-  // AppShell은 라우트가 바뀔 때마다 새로 마운트되므로, 초기값만으로
-  // "/wallets로 진입했을 때 자동으로 펼쳐짐"이 항상 성립한다.
   const [walletsOpen, setWalletsOpen] = useState(() =>
     location.pathname.startsWith("/wallets"),
   );
@@ -154,6 +154,7 @@ export default function AppShell({ children }: AppShellProps) {
   );
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [systemHealthy, setSystemHealthy] = useState<boolean | null>(null);
   const inAppEnabledRef = useRef(true);
   const notifWrapRef = useRef<HTMLDivElement>(null);
 
@@ -198,6 +199,29 @@ export default function AppShell({ children }: AppShellProps) {
       })
       .catch(() => {
         // 사이드바 계정 정보 조회 실패는 조용히 무시
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSystemStatus()
+      .then((status) => {
+        if (cancelled) return;
+
+        const healthy =
+          status.backendOnline &&
+          status.dbConnected &&
+          status.sepoliaRpcConnected;
+
+        setSystemHealthy(healthy);
+      })
+      .catch(() => {
+        if (!cancelled) setSystemHealthy(false);
       });
 
     return () => {
@@ -278,8 +302,18 @@ export default function AppShell({ children }: AppShellProps) {
       }
     };
 
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotifOpen(false);
+      }
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [notifOpen]);
 
   const handleToggleNotifications = () => {
@@ -294,8 +328,12 @@ export default function AppShell({ children }: AppShellProps) {
     setNotifications(clearStoredNotifications());
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("accessToken");
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch {
+      // Proceed to login even if the server-side cookie clear fails.
+    }
     navigate("/login");
   };
 
@@ -393,6 +431,8 @@ export default function AppShell({ children }: AppShellProps) {
                 disabled={!item.path}
                 onClick={() => handleNavClick(item)}
                 title={item.path ? undefined : "준비 중"}
+                aria-current={item.key === activeKey ? "page" : undefined}
+                aria-expanded={item.key === "wallets" ? walletsOpen : undefined}
               >
                 <span className="app-shell__nav-icon">{item.icon}</span>
                 <span>{item.label}</span>
@@ -423,9 +463,15 @@ export default function AppShell({ children }: AppShellProps) {
         </nav>
 
         <div className="app-shell__sidebar-footer">
-          <span className="app-shell__status-dot" />
+          <span
+            className={`app-shell__status-dot${
+              systemHealthy === false ? " is-degraded" : ""
+            }`}
+          />
           <div>
-            <div className="app-shell__footer-title">System Normal</div>
+            <div className="app-shell__footer-title">
+              {systemHealthy === false ? "System Degraded" : "System Normal"}
+            </div>
             <div className="app-shell__footer-sub">Sepolia Testnet</div>
           </div>
         </div>

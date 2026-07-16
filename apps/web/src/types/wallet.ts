@@ -1,6 +1,6 @@
 export type Wallet = {
     id: string;
-    walletType: string;
+    walletType: WalletType;
     address: string;
     createdAt: string;
     resolvedAddress?: string;
@@ -14,15 +14,33 @@ export type Wallet = {
     balanceWei: string;
   };
   
+  export type WithdrawStatus =
+    | "PENDING"
+    | "APPROVED"
+    | "QUEUED"
+    | "PROCESSING"
+    | "EXECUTED"
+    | "REJECTED"
+    | "FAILED"
+    | "EXPIRED";
+
+  export type WalletType =
+    | "BACKEND_SEC"
+    | "MULTISIG"
+    | "POLICY_GUARD"
+    | "KMS"
+    | "MPC"
+    | "SSS";
+
   export type WithdrawItem = {
     id: string;
     amount: string;
     toAddress: string;
-    status: "PENDING" | "EXECUTED" | "REJECTED" | "FAILED";
+    status: WithdrawStatus;
     approvedBy: string | null;
     txHash: string | null;
     createdAt: string;
-    executionType?: string | null;
+    executionType?: WalletType | null;
     approvalCount?: number;
     requiredApprovalCount?: number | null;
   };
@@ -31,11 +49,4 @@ export type Wallet = {
     walletId: string;
     dailyLimit: string;
     singleTxLimit: string;
-  };
-
-  export type SssStatus = {
-    walletId: string;
-    walletType: string;
-    unlockState: "LOCKED" | "UNLOCKED_ONCE";
-    unlockExpiresAt: string | null;
   };

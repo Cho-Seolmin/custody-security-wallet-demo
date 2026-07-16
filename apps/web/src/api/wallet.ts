@@ -5,6 +5,16 @@ export async function getWallets() {
   return res.data;
 }
 
+export async function getWalletSummary() {
+  const res = await api.get("/wallets/summary");
+  return res.data as {
+    walletCount: number;
+    totalBalanceWei: string;
+    pendingWithdrawCount: number;
+    completedWithdrawCount: number;
+  };
+}
+
 export async function getWalletBalance(walletId: string) {
   const res = await api.get(`/wallets/${walletId}/balance`);
   return res.data;
@@ -35,11 +45,6 @@ export async function createWithdraw(
   return res.data;
 }
 
-export async function createWallet(walletType: string) {
-  const res = await api.post("/wallets", { walletType });
-  return res.data;
-}
-
 export async function updateWalletWhitelist(
   walletId: string,
   addresses: string[],
@@ -57,18 +62,5 @@ export async function getWalletWhitelist(walletId: string) {
 
 export async function getWalletLimits(walletId: string) {
   const res = await api.get(`/wallets/${walletId}/limits`);
-  return res.data;
-}
-
-export async function getSssStatus(walletId: string) {
-  const res = await api.get(`/wallets/${walletId}/sss/status`);
-  return res.data;
-}
-
-export async function unlockSssWallet(
-  walletId: string,
-  payload: { privateKey: string }
-) {
-  const res = await api.post(`/wallets/${walletId}/sss/unlock`, payload);
   return res.data;
 }

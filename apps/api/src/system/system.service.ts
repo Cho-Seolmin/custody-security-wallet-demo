@@ -1,9 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
-import { SignerService } from "../wallet/signer.service";
-import { KmsService } from "../wallet/kms.service";
-import { MpcService } from "../wallet/mpc.service";
-import { WithdrawGateway } from "../wallet/withdraw.gateway";
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { SignerService } from '../wallet/signer.service';
+import { KmsService } from '../wallet/kms.service';
+import { MpcService } from '../wallet/mpc.service';
+import { WithdrawGateway } from '../wallet/withdraw.gateway';
+import { isOtpConfigured } from '../auth/totp.util';
 
 @Injectable()
 export class SystemService {
@@ -18,17 +19,16 @@ export class SystemService {
   ) {}
 
   async getHealth() {
-
     const queuePending = await this.prisma.withdrawalQueue.count({
-      where: { status: "PENDING" },
+      where: { status: 'PENDING' },
     });
 
     const queueRunning = await this.prisma.withdrawalQueue.count({
-      where: { status: "RUNNING" },
+      where: { status: 'RUNNING' },
     });
 
     const queueDead = await this.prisma.withdrawalQueue.count({
-      where: { status: "DEAD" },
+      where: { status: 'DEAD' },
     });
 
     const signerAddress = await this.signerService.getSignerAddress();
@@ -46,7 +46,7 @@ export class SystemService {
 
   private isConfigured(value: string | undefined): boolean {
     if (!value) return false;
-    return !value.startsWith("your-") && value !== "0x...";
+    return !value.startsWith('your-') && value !== '0x...';
   }
 
   private async withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -58,7 +58,9 @@ export class SystemService {
 
     return Promise.race([
       promise,
-      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), ms),
+      ),
     ]);
   }
 
@@ -72,7 +74,10 @@ export class SystemService {
 
     let sepoliaRpcConnected = false;
     try {
-      await this.withTimeout(this.signerService.getProvider().getBlockNumber(), 3000);
+      await this.withTimeout(
+        this.signerService.getProvider().getBlockNumber(),
+        3000,
+      );
       sepoliaRpcConnected = true;
     } catch {
       sepoliaRpcConnected = false;
@@ -105,7 +110,9 @@ export class SystemService {
         await this.withTimeout(this.kmsService.getPublicKey(), 5000);
         awsKmsConnected = true;
       } catch (err) {
-        this.logger.warn(`AWS KMS live check failed: ${(err as Error)?.message}`);
+        this.logger.warn(
+          `AWS KMS live check failed: ${(err as Error)?.message}`,
+        );
         awsKmsConnected = false;
       }
     }
@@ -113,12 +120,13 @@ export class SystemService {
     // The Socket.IO server is attached to this same process during Nest's
     // gateway bootstrap; if it's missing/unusable, real-time updates are down.
     const websocketConnected =
-      !!this.withdrawGateway.server && typeof this.withdrawGateway.server.emit === "function";
+      !!this.withdrawGateway.server &&
+      typeof this.withdrawGateway.server.emit === 'function';
 
-    const otpConfigured = this.isConfigured(process.env.DEV_TOTP_SECRET);
+    const otpConfigured = isOtpConfigured();
 
     return {
-      apiStatus: "OK",
+      apiStatus: 'OK',
       backendOnline: true,
       dbConnected,
       websocketConnected,
@@ -126,7 +134,7 @@ export class SystemService {
       dfnsConnected,
       awsKmsConnected,
       otpConfigured,
-      network: "Sepolia Testnet",
+      network: 'Sepolia Testnet',
       serverTime: new Date().toISOString(),
     };
   }

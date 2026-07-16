@@ -90,17 +90,19 @@ export default function DepositPanel({ wallets }: DepositPanelProps) {
         지갑 테스트를 위한 금액이 부족할 시 입금해주세요.
       </p>
 
-      <input
-        type="text"
-        value={amountEth}
-        onChange={(e) => setAmountEth(e.target.value)}
-        placeholder="입금 금액(ETH)"
-        style={{
-          width: "100%",
-          marginBottom: "12px",
-          padding: "8px",
-        }}
-      />
+      <div className="field">
+        <label className="input-label" htmlFor="deposit-amount-eth">
+          입금 금액 (ETH)
+        </label>
+        <input
+          id="deposit-amount-eth"
+          type="text"
+          className="input"
+          value={amountEth}
+          onChange={(e) => setAmountEth(e.target.value)}
+          placeholder="입금 금액(ETH)"
+        />
+      </div>
 
       {wallets.map((wallet) => {
         const target =
@@ -129,6 +131,8 @@ export default function DepositPanel({ wallets }: DepositPanelProps) {
             </div>
 
             <button
+              type="button"
+              className="btn btn--secondary"
               onClick={() =>
                 handleDeposit(wallet.walletType, wallet.address)
               }

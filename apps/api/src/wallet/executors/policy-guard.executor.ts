@@ -1,7 +1,7 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { Contract } from "ethers";
-import { SignerService } from "../signer.service";
-import { ExecutorResult } from "./executor.types";
+import { Injectable, Logger } from '@nestjs/common';
+import { Contract } from 'ethers';
+import { SignerService } from '../signer.service';
+import { ExecutorResult } from './executor.types';
 
 @Injectable()
 export class PolicyGuardExecutor {
@@ -16,9 +16,7 @@ export class PolicyGuardExecutor {
   }): Promise<ExecutorResult> {
     const signer = this.signerService.getSigner();
 
-    const abi = [
-      "function withdraw(address to, uint256 amount) external",
-    ];
+    const abi = ['function withdraw(address to, uint256 amount) external'];
 
     const contract = new Contract(params.contractAddress, abi, signer);
 
@@ -26,11 +24,11 @@ export class PolicyGuardExecutor {
     const receipt = await tx.wait();
 
     this.logger.log(
-      `POLICY_GUARD executed: txHash=${tx.hash}, block=${receipt?.blockNumber ?? "unknown"}`
+      `POLICY_GUARD executed: txHash=${tx.hash}, block=${receipt?.blockNumber ?? 'unknown'}`,
     );
 
     return {
-      type: "ONCHAIN_TX",
+      type: 'ONCHAIN_TX',
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber ?? null,
       receipt,

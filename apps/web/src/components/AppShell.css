@@ -287,6 +287,11 @@
   flex-shrink: 0;
 }
 
+.app-shell__status-dot.is-degraded {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning) 20%, transparent);
+}
+
 .app-shell__footer-title {
   font-size: 12px;
   font-weight: 600;
@@ -394,4 +399,13 @@
   .app-shell__sidebar-footer {
     display: none;
   }
+}
+
+.app-shell__theme-toggle:focus-visible,
+.app-shell__nav-item:focus-visible,
+.app-shell__submenu-item:focus-visible,
+.app-shell__logout-btn:focus-visible,
+.app-shell__notif-clear:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }

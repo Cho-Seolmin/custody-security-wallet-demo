@@ -1,6 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { SignerService } from "../signer.service";
-import { ExecutorResult } from "./executor.types";
+import { Injectable, Logger } from '@nestjs/common';
+import { SignerService } from '../signer.service';
+import { ExecutorResult } from './executor.types';
 
 @Injectable()
 export class BackendSecExecutor {
@@ -17,7 +17,7 @@ export class BackendSecExecutor {
 
     if (signerBalance < params.amountWei) {
       throw new Error(
-        `Insufficient signer balance: signer=${signerAddress}, balance=${signerBalance.toString()}, requested=${params.amountWei.toString()}`
+        `Insufficient signer balance: signer=${signerAddress}, balance=${signerBalance.toString()}, requested=${params.amountWei.toString()}`,
       );
     }
 
@@ -29,11 +29,11 @@ export class BackendSecExecutor {
     const receipt = await tx.wait();
 
     this.logger.log(
-      `BACKEND_SEC executed: txHash=${tx.hash}, block=${receipt?.blockNumber ?? "unknown"}`
+      `BACKEND_SEC executed: txHash=${tx.hash}, block=${receipt?.blockNumber ?? 'unknown'}`,
     );
 
     return {
-      type: "ONCHAIN_TX",
+      type: 'ONCHAIN_TX',
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber ?? null,
       receipt,

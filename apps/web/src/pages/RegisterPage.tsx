@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { register } from "../api/auth";
+import { API_BASE_URL } from "../api/axios";
 import "../styles/page.css";
 
 type RegisterResponse = {
@@ -40,8 +41,6 @@ export default function RegisterPage() {
     }
   };
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-
   const handleOpenVerifyLink = async () => {
     if (!registerResult?.token) return;
   
@@ -60,7 +59,7 @@ export default function RegisterPage() {
       setMessage("회원가입 완료 (임시 이메일 인증 완료)");
       setVerified(true);
   
-    } catch (err) {
+    } catch {
       setError("이메일 인증 실패");
     }
   };
@@ -84,24 +83,32 @@ export default function RegisterPage() {
           <>
             <form onSubmit={handleRegister}>
               <div className="field">
-                <label className="input-label">이메일</label>
+                <label className="input-label" htmlFor="register-email">
+                  이메일
+                </label>
                 <input
+                  id="register-email"
                   type="email"
                   className="input"
                   placeholder="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                 />
               </div>
 
               <div className="field">
-                <label className="input-label">비밀번호</label>
+                <label className="input-label" htmlFor="register-password">
+                  비밀번호
+                </label>
                 <input
+                  id="register-password"
                   type="password"
                   className="input"
                   placeholder="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -111,7 +118,7 @@ export default function RegisterPage() {
             </form>
 
             <div className="auth-footer">
-              이미 계정이 있나요? <a href="/login">로그인</a>
+              이미 계정이 있나요? <Link to="/login">로그인</Link>
             </div>
           </>
         ) : (
@@ -126,11 +133,11 @@ export default function RegisterPage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {!verified && (
-                <button className="btn btn--primary" onClick={handleOpenVerifyLink}>
+                <button type="button" className="btn btn--primary" onClick={handleOpenVerifyLink}>
                   임시 이메일 인증 하기
                 </button>
               )}
-              <button className="btn btn--secondary" onClick={() => navigate("/login")}>
+              <button type="button" className="btn btn--secondary" onClick={() => navigate("/login")}>
                 로그인 페이지로 이동
               </button>
             </div>

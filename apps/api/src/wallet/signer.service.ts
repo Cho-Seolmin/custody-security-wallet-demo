@@ -1,5 +1,5 @@
-import { Injectable } from "@nestjs/common";
-import { JsonRpcProvider, TransactionResponse, Wallet } from "ethers";
+import { Injectable } from '@nestjs/common';
+import { JsonRpcProvider, TransactionResponse, Wallet } from 'ethers';
 
 @Injectable()
 export class SignerService {
@@ -9,12 +9,12 @@ export class SignerService {
   constructor() {
     const rpc = process.env.SEPOLIA_RPC_URL;
     if (!rpc) {
-      throw new Error("SEPOLIA_RPC_URL is missing in .env");
+      throw new Error('SEPOLIA_RPC_URL is missing in .env');
     }
 
     const pk = process.env.BACKEND_SIGNER_PRIVATE_KEY;
     if (!pk) {
-      throw new Error("BACKEND_SIGNER_PRIVATE_KEY missing");
+      throw new Error('BACKEND_SIGNER_PRIVATE_KEY missing');
     }
 
     this.provider = new JsonRpcProvider(rpc);

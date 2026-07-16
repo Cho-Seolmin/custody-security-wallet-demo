@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  api:
+    name: API (lint · test · build)
+    runs-on: ubuntu-latest
+    env:
+      # prisma generate only reads the schema, it does not connect to this
+      # DB — a placeholder is enough to satisfy the datasource env lookup.
+      DATABASE_URL: "postgresql://user:password@localhost:5432/custody_demo_ci"
+      JWT_SECRET: "ci-test-secret"
+      JWT_EXPIRES_IN: "7d"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+
+      - name: Lint
+        # Existing `any`-type lint debt (tracked separately) shouldn't block
+        # CI yet; this still surfaces the report on every run.
+        run: npm run lint --workspace apps/api
+        continue-on-error: true
+
+      - name: Unit tests
+        run: npm run test --workspace apps/api
+
+      - name: Build
+        run: npm run build --workspace apps/api
+
+  web:
+    name: Web (lint · build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        # Existing `any`-type lint debt (tracked separately) shouldn't block
+        # CI yet; this still surfaces the report on every run.
+        run: npm run lint --workspace apps/web
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build --workspace apps/web

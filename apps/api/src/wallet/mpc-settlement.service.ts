@@ -1,9 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
-import { MpcService } from "./mpc.service";
-import { WithdrawalAuditService } from "./withdrawal-audit.service";
-import { WithdrawGateway } from "./withdraw.gateway";
-import { Prisma } from "@prisma/client";
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { MpcService } from './mpc.service';
+import { WithdrawalAuditService } from './withdrawal-audit.service';
+import { WithdrawGateway } from './withdraw.gateway';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class MpcSettlementService implements OnModuleInit {
@@ -11,7 +11,7 @@ export class MpcSettlementService implements OnModuleInit {
   private isProcessing = false;
   private toPrismaJson(value: unknown): Prisma.InputJsonValue | null {
     if (value === undefined) return null;
-  
+
     return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   }
 
@@ -25,7 +25,7 @@ export class MpcSettlementService implements OnModuleInit {
   onModuleInit() {
     setInterval(() => {
       this.poll().catch((error) => {
-        this.logger.error("MPC settlement poll failed", error);
+        this.logger.error('MPC settlement poll failed', error);
       });
     }, 10000);
   }
@@ -38,13 +38,13 @@ export class MpcSettlementService implements OnModuleInit {
     try {
       const pendingRequests = await this.prisma.withdrawRequest.findMany({
         where: {
-          status: "PROCESSING",
+          status: 'PROCESSING',
           wallet: {
-            walletType: "MPC",
+            walletType: 'MPC',
           },
           metadata: {
-            path: ["externalProvider"],
-            equals: "MPC",
+            path: ['externalProvider'],
+            equals: 'MPC',
           },
         },
         include: {
@@ -52,7 +52,7 @@ export class MpcSettlementService implements OnModuleInit {
         },
         take: 10,
         orderBy: {
-          processingAt: "asc",
+          processingAt: 'asc',
         },
       });
 
@@ -69,13 +69,13 @@ export class MpcSettlementService implements OnModuleInit {
           submittedAt: metadata?.externalSubmittedAt,
         });
 
-        if (statusResult.status === "PENDING") {
+        if (statusResult.status === 'PENDING') {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
               metadata: {
                 ...metadata,
-                externalStatus: "PENDING",
+                externalStatus: 'PENDING',
                 externalLastCheckedAt: new Date().toISOString(),
                 externalRaw: this.toPrismaJson(statusResult.raw),
               },
@@ -85,18 +85,18 @@ export class MpcSettlementService implements OnModuleInit {
           continue;
         }
 
-        if (statusResult.status === "CONFIRMED") {
+        if (statusResult.status === 'CONFIRMED') {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
-              status: "EXECUTED",
+              status: 'EXECUTED',
               txHash: statusResult.txHash,
               confirmedAt: new Date(),
               finalizedAt: new Date(),
               failureReason: null,
               metadata: {
                 ...metadata,
-                externalStatus: "CONFIRMED",
+                externalStatus: 'CONFIRMED',
                 externalLastCheckedAt: new Date().toISOString(),
                 externalRaw: this.toPrismaJson(statusResult.raw),
               },
@@ -107,13 +107,13 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             userId: request.wallet.userId,
-            eventType: "MPC_CONFIRMED",
-            actorType: "SYSTEM",
-            message: "MPC external transfer confirmed",
+            eventType: 'MPC_CONFIRMED',
+            actorType: 'SYSTEM',
+            message: 'MPC external transfer confirmed',
             data: {
               externalRequestId,
               txHash: statusResult.txHash ?? null,
-              provider: "MPC",
+              provider: 'MPC',
             },
           });
 
@@ -121,9 +121,10 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             walletType: request.wallet.walletType,
-            status: "EXECUTED",
+            userId: request.wallet.userId,
+            status: 'EXECUTED',
             txHash: statusResult.txHash,
-            message: "MPC transfer confirmed",
+            message: 'MPC transfer confirmed',
           });
 
           this.logger.log(
@@ -133,16 +134,16 @@ export class MpcSettlementService implements OnModuleInit {
           continue;
         }
 
-        if (statusResult.status === "FAILED") {
+        if (statusResult.status === 'FAILED') {
           await this.prisma.withdrawRequest.update({
             where: { id: request.id },
             data: {
-              status: "FAILED",
-              failureReason: "MPC external transfer failed",
+              status: 'FAILED',
+              failureReason: 'MPC external transfer failed',
               finalizedAt: new Date(),
               metadata: {
                 ...metadata,
-                externalStatus: "FAILED",
+                externalStatus: 'FAILED',
                 externalLastCheckedAt: new Date().toISOString(),
                 externalRaw: this.toPrismaJson(statusResult.raw),
               },
@@ -153,12 +154,12 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             userId: request.wallet.userId,
-            eventType: "MPC_FAILED",
-            actorType: "SYSTEM",
-            message: "MPC external transfer failed",
+            eventType: 'MPC_FAILED',
+            actorType: 'SYSTEM',
+            message: 'MPC external transfer failed',
             data: {
               externalRequestId,
-              provider: "MPC",
+              provider: 'MPC',
             },
           });
 
@@ -166,8 +167,9 @@ export class MpcSettlementService implements OnModuleInit {
             withdrawRequestId: request.id,
             walletId: request.walletId,
             walletType: request.wallet.walletType,
-            status: "FAILED",
-            message: "MPC transfer failed",
+            userId: request.wallet.userId,
+            status: 'FAILED',
+            message: 'MPC transfer failed',
           });
 
           this.logger.warn(

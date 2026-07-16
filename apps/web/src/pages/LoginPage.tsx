@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { login } from "../api/auth";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import "../styles/page.css";
 
 export default function LoginPage() {
@@ -17,8 +17,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const data = await login(email, password);
-      localStorage.setItem("accessToken", data.accessToken);
+      await login(email, password);
       navigate(from);
     } catch (err: any) {
       setError(err?.response?.data?.message || "로그인 실패");
@@ -38,24 +37,32 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div className="field">
-            <label className="input-label">이메일</label>
+            <label className="input-label" htmlFor="login-email">
+              이메일
+            </label>
             <input
+              id="login-email"
               type="email"
               className="input"
               placeholder="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
             />
           </div>
 
           <div className="field">
-            <label className="input-label">비밀번호</label>
+            <label className="input-label" htmlFor="login-password">
+              비밀번호
+            </label>
             <input
+              id="login-password"
               type="password"
               className="input"
               placeholder="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
             />
           </div>
 
@@ -76,7 +83,7 @@ export default function LoginPage() {
         </div>
 
         <div className="auth-footer">
-          계정이 없나요? <a href="/register">회원가입</a>
+          계정이 없나요? <Link to="/register">회원가입</Link>
         </div>
       </div>
     </div>

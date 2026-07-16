@@ -1,8 +1,10 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
-import { WithdrawalAuditService } from "../withdrawal-audit.service";
-import { SignerService } from "../signer.service";
-import { ExecutorResult } from "./executor.types";
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { WithdrawalAuditService } from '../withdrawal-audit.service';
+import { SignerService } from '../signer.service';
+import { ExecutorResult } from './executor.types';
+import { stripSignedTxFromMetadata } from '../withdraw-metadata.util';
 
 @Injectable()
 export class SssExecutor {
@@ -28,7 +30,7 @@ export class SssExecutor {
     const signedTx = metadata?.sssSignedTx;
 
     if (!signedTx) {
-      throw new BadRequestException("SSS signedTx not found");
+      throw new BadRequestException('SSS signedTx not found');
     }
 
     const provider = this.signerService.getProvider();
@@ -36,16 +38,28 @@ export class SssExecutor {
     const tx = await provider.broadcastTransaction(signedTx);
     const receipt = await tx.wait();
 
+    const sanitizedMetadata = stripSignedTxFromMetadata(metadata);
+
+    await this.prisma.withdrawRequest.update({
+      where: { id: params.withdrawRequestId },
+      data: {
+        metadata:
+          sanitizedMetadata === null
+            ? Prisma.JsonNull
+            : (sanitizedMetadata as Prisma.InputJsonValue),
+      },
+    });
+
     await this.withdrawalAuditService.append({
       withdrawRequestId: params.withdrawRequestId,
       walletId: params.walletId,
-      eventType: "SSS_SIGNED_TX_BROADCASTED",
-      actorType: "SIGNER",
-      message: "SSS signed transaction broadcasted",
+      eventType: 'SSS_SIGNED_TX_BROADCASTED',
+      actorType: 'SIGNER',
+      message: 'SSS signed transaction broadcasted',
       data: {
         txHash: tx.hash,
         blockNumber: receipt?.blockNumber ?? null,
-        signerType: "CLIENT_SIDE_SIGNED_TX",
+        signerType: 'CLIENT_SIDE_SIGNED_TX',
       },
     });
 
@@ -54,7 +68,7 @@ export class SssExecutor {
     );
 
     return {
-      type: "ONCHAIN_TX",
+      type: 'ONCHAIN_TX',
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber ?? null,
       receipt,

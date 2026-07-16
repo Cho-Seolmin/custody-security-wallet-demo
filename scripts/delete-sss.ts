@@ -1,3 +1,10 @@
+/**
+ * Maintenance script — deletes all SSS wallets and related records.
+ * Run only when intentionally resetting SSS demo data.
+ *
+ * Usage (from repo root):
+ *   npm --workspace apps/api exec ts-node -- ../../scripts/delete-sss.ts
+ */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -10,7 +17,6 @@ async function main() {
   for (const w of wallets) {
     await prisma.withdrawalAuditLog.deleteMany({ where: { walletId: w.id } });
     await prisma.withdrawRequest.deleteMany({ where: { walletId: w.id } });
-    await prisma.walletSecurityState.deleteMany({ where: { walletId: w.id } });
     await prisma.whitelist.deleteMany({ where: { walletId: w.id } });
     await prisma.walletLimit.deleteMany({ where: { walletId: w.id } });
     await prisma.wallet.delete({ where: { id: w.id } });

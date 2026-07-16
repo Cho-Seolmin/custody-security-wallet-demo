@@ -1,9 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
-import { QueueService } from "./queue.service";
-import { WithdrawalAuditService } from "./withdrawal-audit.service";
-import { ExecutionRouterService } from "./execution-router.service";
-import { WithdrawGateway } from "./withdraw.gateway";
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { QueueService } from './queue.service';
+import { WithdrawalAuditService } from './withdrawal-audit.service';
+import { ExecutionRouterService } from './execution-router.service';
+import { WithdrawGateway } from './withdraw.gateway';
 
 @Injectable()
 export class WithdrawalWorkerService implements OnModuleInit {
@@ -21,7 +21,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
   onModuleInit() {
     setInterval(() => {
       this.poll().catch((error) => {
-        this.logger.error("Worker poll failed", error);
+        this.logger.error('Worker poll failed', error);
       });
     }, 5000);
   }
@@ -50,29 +50,29 @@ export class WithdrawalWorkerService implements OnModuleInit {
 
       if (!withdrawRequest) {
         await this.queueService.markDead(job.id, {
-          errorCode: "REQUEST_NOT_FOUND",
-          errorMessage: "WithdrawRequest not found",
+          errorCode: 'REQUEST_NOT_FOUND',
+          errorMessage: 'WithdrawRequest not found',
         });
         return;
       }
 
       if (
-        withdrawRequest.wallet.walletType !== "BACKEND_SEC" &&
-        withdrawRequest.wallet.walletType !== "MULTISIG" &&
-        withdrawRequest.wallet.walletType !== "POLICY_GUARD" &&
-        withdrawRequest.wallet.walletType !== "KMS" &&
-        withdrawRequest.wallet.walletType !== "MPC" &&
-        withdrawRequest.wallet.walletType !== "SSS"
+        withdrawRequest.wallet.walletType !== 'BACKEND_SEC' &&
+        withdrawRequest.wallet.walletType !== 'MULTISIG' &&
+        withdrawRequest.wallet.walletType !== 'POLICY_GUARD' &&
+        withdrawRequest.wallet.walletType !== 'KMS' &&
+        withdrawRequest.wallet.walletType !== 'MPC' &&
+        withdrawRequest.wallet.walletType !== 'SSS'
       ) {
         await this.queueService.markDead(job.id, {
-          errorCode: "UNSUPPORTED_WALLET_TYPE",
+          errorCode: 'UNSUPPORTED_WALLET_TYPE',
           errorMessage: `Unsupported walletType: ${withdrawRequest.wallet.walletType}`,
         });
 
         await this.prisma.withdrawRequest.update({
           where: { id: withdrawRequest.id },
           data: {
-            status: "FAILED",
+            status: 'FAILED',
             failureReason: `Unsupported walletType: ${withdrawRequest.wallet.walletType}`,
             finalizedAt: new Date(),
           },
@@ -82,7 +82,8 @@ export class WithdrawalWorkerService implements OnModuleInit {
           withdrawRequestId: withdrawRequest.id,
           walletId: withdrawRequest.walletId,
           walletType: withdrawRequest.wallet.walletType,
-          status: "FAILED",
+          userId: withdrawRequest.wallet.userId,
+          status: 'FAILED',
           message: `Unsupported walletType: ${withdrawRequest.wallet.walletType}`,
         });
 
@@ -90,9 +91,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
           withdrawRequestId: withdrawRequest.id,
           walletId: withdrawRequest.walletId,
           userId: withdrawRequest.wallet.userId,
-          eventType: "TX_FAILED",
-          actorType: "WORKER",
-          message: "Unsupported wallet type for current worker",
+          eventType: 'TX_FAILED',
+          actorType: 'WORKER',
+          message: 'Unsupported wallet type for current worker',
           data: {
             walletType: withdrawRequest.wallet.walletType,
           },
@@ -104,7 +105,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
       await this.prisma.withdrawRequest.update({
         where: { id: withdrawRequest.id },
         data: {
-          status: "PROCESSING",
+          status: 'PROCESSING',
           processingAt: new Date(),
         },
       });
@@ -113,9 +114,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
         withdrawRequestId: withdrawRequest.id,
         walletId: withdrawRequest.walletId,
         userId: withdrawRequest.wallet.userId,
-        eventType: "EXECUTION_STARTED",
-        actorType: "WORKER",
-        message: "Worker started execution",
+        eventType: 'EXECUTION_STARTED',
+        actorType: 'WORKER',
+        message: 'Worker started execution',
         data: {
           queueId: job.id,
           walletType: withdrawRequest.wallet.walletType,
@@ -135,12 +136,12 @@ export class WithdrawalWorkerService implements OnModuleInit {
           amountWei,
         });
 
-        if (result.type === "ONCHAIN_TX") {
+        if (result.type === 'ONCHAIN_TX') {
           await this.prisma.withdrawRequest.update({
             where: { id: withdrawRequest.id },
             data: {
               txHash: result.txHash,
-              status: "EXECUTED",
+              status: 'EXECUTED',
               broadcastedAt: new Date(),
               confirmedAt: new Date(),
               finalizedAt: new Date(),
@@ -154,45 +155,46 @@ export class WithdrawalWorkerService implements OnModuleInit {
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             walletType: withdrawRequest.wallet.walletType,
-            status: "EXECUTED",
+            userId: withdrawRequest.wallet.userId,
+            status: 'EXECUTED',
             txHash: result.txHash,
-            message: "Withdraw executed successfully",
+            message: 'Withdraw executed successfully',
           });
 
           await this.withdrawalAuditService.append({
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             userId: withdrawRequest.wallet.userId,
-            eventType: "TX_CONFIRMED",
-            actorType: "SIGNER",
-            message: "Transaction executed via ExecutionRouter",
+            eventType: 'TX_CONFIRMED',
+            actorType: 'SIGNER',
+            message: 'Transaction executed via ExecutionRouter',
             data: {
               txHash: result.txHash,
               blockNumber: result.blockNumber ?? null,
               walletType: withdrawRequest.wallet.walletType,
               signerType:
-                withdrawRequest.wallet.walletType === "KMS"
-                  ? "AWS_KMS"
-                  : "LOCAL_SIGNER",
+                withdrawRequest.wallet.walletType === 'KMS'
+                  ? 'AWS_KMS'
+                  : 'LOCAL_SIGNER',
             },
           });
 
-          if (withdrawRequest.wallet.walletType === "KMS") {
+          if (withdrawRequest.wallet.walletType === 'KMS') {
             await this.withdrawalAuditService.append({
               withdrawRequestId: withdrawRequest.id,
               walletId: withdrawRequest.walletId,
               userId: withdrawRequest.wallet.userId,
-              eventType: "KMS_BROADCASTED",
-              actorType: "SIGNER",
-              message: "Transaction broadcasted via AWS KMS signer",
+              eventType: 'KMS_BROADCASTED',
+              actorType: 'SIGNER',
+              message: 'Transaction broadcasted via AWS KMS signer',
               data: {
                 txHash: result.txHash,
                 blockNumber: result.blockNumber ?? null,
                 walletType: withdrawRequest.wallet.walletType,
                 signerType:
-                  withdrawRequest.wallet.walletType === "KMS"
-                    ? "AWS_KMS"
-                    : "LOCAL_SIGNER",
+                  withdrawRequest.wallet.walletType === 'KMS'
+                    ? 'AWS_KMS'
+                    : 'LOCAL_SIGNER',
               },
             });
           }
@@ -200,19 +202,18 @@ export class WithdrawalWorkerService implements OnModuleInit {
           this.logger.log(
             `Withdraw executed: requestId=${withdrawRequest.id}, txHash=${result.txHash}`,
           );
-        } else if (result.type === "EXTERNAL_PENDING") {
+        } else if (result.type === 'EXTERNAL_PENDING') {
           await this.prisma.withdrawRequest.update({
             where: { id: withdrawRequest.id },
             data: {
-              status: "PROCESSING",
+              status: 'PROCESSING',
               failureReason: null,
               metadata: {
                 ...(withdrawRequest.metadata as Record<string, any> | null),
                 externalRequestId: result.externalRequestId,
                 externalProvider: result.provider,
-                externalStatus: "PENDING",
+                externalStatus: 'PENDING',
                 externalSubmittedAt: new Date().toISOString(),
-              
               },
             },
           });
@@ -223,15 +224,14 @@ export class WithdrawalWorkerService implements OnModuleInit {
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             userId: withdrawRequest.wallet.userId,
-            eventType: "EXECUTION_STARTED",
-            actorType: "SYSTEM",
-            message: "External execution submitted and awaiting confirmation",
+            eventType: 'EXECUTION_STARTED',
+            actorType: 'SYSTEM',
+            message: 'External execution submitted and awaiting confirmation',
             data: {
               externalRequestId: result.externalRequestId,
               provider: result.provider,
               walletType: withdrawRequest.wallet.walletType,
-              externalStatus: "PENDING",
-
+              externalStatus: 'PENDING',
             },
           });
 
@@ -239,24 +239,25 @@ export class WithdrawalWorkerService implements OnModuleInit {
             `External execution pending: requestId=${withdrawRequest.id}, externalRequestId=${result.externalRequestId}, provider=${result.provider}`,
           );
         } else {
-          throw new Error("Unknown execution result type");
+          throw new Error('Unknown execution result type');
         }
       } catch (error: any) {
         const nextRetryCount = (withdrawRequest.retryCount ?? 0) + 1;
-        const errorMessage = error?.message || "Execution failed";
+        const errorMessage = error?.message || 'Execution failed';
 
         if (nextRetryCount >= 3) {
           this.withdrawGateway.emitWithdrawUpdated({
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             walletType: withdrawRequest.wallet.walletType,
-            status: "FAILED",
-            message: "Execution failed and max retries exceeded",
+            userId: withdrawRequest.wallet.userId,
+            status: 'FAILED',
+            message: 'Execution failed and max retries exceeded',
           });
           await this.prisma.withdrawRequest.update({
             where: { id: withdrawRequest.id },
             data: {
-              status: "FAILED",
+              status: 'FAILED',
               retryCount: nextRetryCount,
               failureReason: errorMessage,
               finalizedAt: new Date(),
@@ -264,7 +265,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
           });
 
           await this.queueService.markDead(job.id, {
-            errorCode: "EXECUTION_FAILED",
+            errorCode: 'EXECUTION_FAILED',
             errorMessage,
           });
 
@@ -272,9 +273,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             userId: withdrawRequest.wallet.userId,
-            eventType: "TX_FAILED",
-            actorType: "SYSTEM",
-            message: "ExecutionRouter failed and max retries exceeded",
+            eventType: 'TX_FAILED',
+            actorType: 'SYSTEM',
+            message: 'ExecutionRouter failed and max retries exceeded',
             data: {
               error: errorMessage,
               retryCount: nextRetryCount,
@@ -291,7 +292,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
           });
 
           await this.queueService.markRetry(job.id, {
-            errorCode: "EXECUTION_FAILED",
+            errorCode: 'EXECUTION_FAILED',
             errorMessage,
             retryDelaySeconds: 30,
           });
@@ -300,9 +301,9 @@ export class WithdrawalWorkerService implements OnModuleInit {
             withdrawRequestId: withdrawRequest.id,
             walletId: withdrawRequest.walletId,
             userId: withdrawRequest.wallet.userId,
-            eventType: "RETRY_SCHEDULED",
-            actorType: "WORKER",
-            message: "ExecutionRouter failed, retry scheduled",
+            eventType: 'RETRY_SCHEDULED',
+            actorType: 'WORKER',
+            message: 'ExecutionRouter failed, retry scheduled',
             data: {
               error: errorMessage,
               retryCount: nextRetryCount,

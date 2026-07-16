@@ -5,6 +5,7 @@ import WalletsPage from "../pages/WalletsPage";
 import AdminPage from "../pages/AdminPage";
 import SettingsPage from "../pages/SettingsPage";
 import ProtectedRoute from "../components/ProtectedRoute";
+import AppLayout from "../components/AppLayout";
 import RegisterPage from "../pages/RegisterPage";
 
 export default function AppRouter() {
@@ -14,44 +15,21 @@ export default function AppRouter() {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route
-  path="/dashboard"
-  element={
-    <ProtectedRoute>
-      <DashboardPage />
-    </ProtectedRoute>
-  }
-/>
 
         <Route
-  path="/admin"
-  element={
-    <ProtectedRoute>
-      <AdminPage />
-    </ProtectedRoute>
-  }
-/>
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/wallets" element={<WalletsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
 
-<Route
-  path="/wallets"
-  element={
-    <ProtectedRoute>
-      <WalletsPage />
-    </ProtectedRoute>
-  }
-/>
-
-<Route
-  path="/settings"
-  element={
-    <ProtectedRoute>
-      <SettingsPage />
-    </ProtectedRoute>
-  }
-/>
-
-<Route path="*" element={<Navigate to="/dashboard" replace />} />
-
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

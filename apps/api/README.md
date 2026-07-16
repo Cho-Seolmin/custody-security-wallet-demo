@@ -1,8 +1,10 @@
-# Custody Security Wallet Demo
+# Custody Security Wallet Demo — API
 
-보안 중심 커스터디 지갑 데모 프로젝트입니다.
+보안 중심 커스터디 지갑 **포트폴리오 데모**의 NestJS 백엔드입니다.
 
-다양한 키 관리 모델(Backend Signer, Multisig, Policy Guard, AWS KMS, MPC, SSS)을 하나의 플랫폼에서 비교할 수 있도록 구현했으며, 출금 요청 생성부터 승인, Queue 처리, Worker 실행, Audit Log 기록, 실시간 상태 반영까지 백엔드 중심으로 설계했습니다.
+다양한 키 관리 모델(Backend Signer, Multisig, Policy Guard, AWS KMS, MPC, SSS)을 **동일한 출금 파이프라인**(Policy → Queue → Worker → Executor → Audit → WebSocket) 위에서 비교할 수 있도록 설계했습니다.
+
+> 지갑 생성 API/UI는 **없습니다.** 6종 데모 지갑은 DB에 **사전 provisioning**되어 있어야 하며, 회원가입만으로는 지갑이 생기지 않습니다.
 
 ---
 
@@ -171,7 +173,7 @@ sequenceDiagram
     end
 ```
 
-출금 요청은 Queue 기반 비동기 구조로 처리됩니다. MULTISIG는 관리자 승인 이후 Queue에 등록되며, 나머지 지갑 타입은 즉시 Queue에 등록됩니다. Worker는 Queue를 polling하며 ExecutionRouter를 통해 walletType별 Executor를 선택하고, 결과를 WebSocket으로 전달합니다.
+출금 요청은 Queue 기반 비동기 구조로 처리됩니다. MULTISIG는 관리자 승인 이후 Queue에 등록되며, 나머지 지갑 타입은 즉시 Queue에 등록됩니다. Worker는 Queue를 polling하며 `FOR UPDATE SKIP LOCKED`로 작업을 원자적으로 예약해 다중 Worker/인스턴스 환경에서도 중복 처리를 방지합니다. ExecutionRouter를 통해 walletType별 Executor를 선택하고, 결과를 WebSocket으로 전달합니다.
 
 ---
 
@@ -286,6 +288,8 @@ erDiagram
 
 각 지갑은 서로 다른 보안 모델과 출금 흐름을 가집니다.
 
+> 6종 지갑은 데모 계정에 미리 구성되어 있으며, 이 프로젝트는 지갑을 새로 생성하는 기능을 제공하지 않습니다. 목적은 이미 구성된 지갑들의 보안 모델과 출금 흐름을 비교·테스트하는 것입니다.
+
 ### BACKEND_SEC
 
 화이트리스트 기반 출금 제어 지갑입니다.
@@ -294,7 +298,7 @@ erDiagram
 
 ### MULTISIG
 
-관리자 2-of-2 승인 기반 지갑입니다.
+앱 레벨 관리자 2-of-2 승인 기반 지갑입니다. **온체인 멀티시그 컨트랙트가 아니라**, 백엔드에서 AdminApproval로 승인 이력을 관리한 뒤 BACKEND_SEC와 동일한 서명자로 트랜잭션을 실행합니다.
 
 사용자가 출금 요청을 생성하면 PENDING 상태가 되며, 관리자 2명이 승인하면 Queue에 등록됩니다.
 
@@ -310,7 +314,7 @@ erDiagram
 
 AWS KMS 기반 외부 키 관리 지갑입니다.
 
-KMS 서명을 통해 트랜잭션을 생성하고 브로드캐스트합니다.
+KMS 서명을 통해 트랜잭션을 생성하고 브로드캐스트합니다. 동시 nonce 충돌을 막기 위해 PostgreSQL advisory lock(`pg_try_advisory_lock`)으로 KMS 전송 구간을 직렬화합니다.
 
 ### MPC
 
@@ -335,10 +339,20 @@ Shamir's Secret Sharing 기반 지갑입니다.
 * Backend Signed Transaction Validation
 * Signed Transaction Broadcast via Worker
 
-복구된 private key는 브라우저에서만 사용되며,
-서버는 signedTx만 수신하며, 원문 private key는 API 요청 본문이나 DB metadata에 저장되지 않습니다.
+복구된 private key는 브라우저에서만 사용되며, API 요청 본문이나 DB에는 절대 전송·저장되지 않습니다.
 
-서버는 signedTx의 signer, recipient, amount, chainId, nonce를 검증한 후 Queue에 등록합니다.
+**SSS 잠금/1회 출금은 DB unlock state가 아니라** “private key 입력 → signedTx 검증 → broadcast” 흐름으로 처리합니다. (과거 `WalletSecurityState` / `SssUnlockState` 스키마는 제거됨)
+
+서버는 브라우저에서 서명이 완료된 `signedTx`만 수신합니다. `signedTx`는 signer, recipient, amount, chainId, nonce를 검증하는 데 사용되고, 이후 Worker가 브로드캐스트할 수 있도록 `WithdrawRequest.metadata.sssSignedTx`에 저장된 후 Queue에 등록됩니다. 브로드캐스트 성공 후 metadata에서 `sssSignedTx`는 삭제됩니다.
+
+> 참고: `signedTx`는 (private key와 달리) 이미 서명이 끝난 트랜잭션이므로 저장해도 개인키가 노출되지는 않지만, 서명된 트랜잭션 원문이 남기 때문에 실제 운영 환경에서는 브로드캐스트 완료 후 폐기하거나 암호화 저장하는 것을 권장합니다.
+
+#### Sepolia 데모 (공개 샤드)
+
+포트폴리오·시연용으로 **3/5 샤드를 문서에 공개**합니다. 운영 환경에서는 custodian 분산 보관이 필수입니다.
+
+* 가이드: [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md)
+* 오프라인 복구: [`tools/offline-sss-recovery/`](tools/offline-sss-recovery/) — `npm run recover`
 
 ---
 
@@ -358,7 +372,7 @@ WithdrawRequest 생성
 
 ## Worker Processing Model
 
-Worker는 5초마다 Queue를 Polling합니다.
+Worker는 5초마다 Queue를 Polling합니다. 작업 예약은 `UPDATE ... FOR UPDATE SKIP LOCKED`로 원자적으로 수행되어, 여러 Worker 프로세스가 동시에 실행되어도 동일 job을 중복 처리하지 않습니다.
 
 정상 처리 흐름
 
@@ -448,14 +462,14 @@ withdraw.updated 수신
 
 # Risk-Based OTP 인증
 
-0.01 ETH 이상 출금 시 Google Authenticator 기반 OTP 인증을 요구합니다.
+0.01 ETH 이상 출금 시 Google Authenticator 기반 OTP 인증을 요구합니다. OTP secret은 계정(`userId`)마다 `JWT_SECRET`에서 파생되며, `GET /auth/totp-setup`으로 확인할 수 있습니다.
 
 ```text
 0.01 ETH 미만
 → OTP 불필요
 
 0.01 ETH 이상
-→ OTP 필수
+→ 계정별 OTP 필수
 ```
 
 OTP 검증 실패 시 출금 요청은 생성되지 않습니다.
@@ -519,6 +533,14 @@ WebSocket은 상태 변경 사실만 전달합니다.
 
 실제 데이터는 API를 다시 조회하도록 구현하여 상태 불일치 가능성을 줄였습니다.
 
+## httpOnly Cookie 인증
+
+JWT는 `localStorage`가 아닌 `httpOnly` cookie(`accessToken`)로 발급합니다. 프론트엔드는 `withCredentials: true`로 API를 호출하며, 세션 확인은 `GET /auth/me`를 사용합니다.
+
+## Dashboard Summary API
+
+대시보드 N+1 호출을 줄이기 위해 `GET /wallets/summary`가 지갑 수, 총 잔액, 출금 집계를 한 번에 반환합니다.
+
 ---
 
 # Limitations & Future Improvements
@@ -528,6 +550,8 @@ WebSocket은 상태 변경 사실만 전달합니다.
 현재 데모에서는 Client-side Signing 방식을 사용합니다.
 
 복구된 private key는 브라우저에서만 사용되며 서버로 전송되지 않습니다.
+
+**Sepolia 시연용**으로 3/5 샤드는 [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md)에 공개되어 있습니다. `apps/api/tools/offline-sss-recovery`에서 `npm run recover`로 private key를 복구한 뒤 웹 UI에 1회 입력합니다.
 
 실제 운영 환경에서는 다음과 같은 추가 보안이 필요합니다.
 
@@ -560,7 +584,7 @@ MPC 지갑은 DFNS 기반 외부 분산 서명 구조를 사용합니다.
 
 ## Queue
 
-현재 Queue는 PostgreSQL 기반 Polling Worker 구조입니다.
+현재 Queue는 PostgreSQL 기반 Polling Worker 구조이며, job 예약에 `SKIP LOCKED`를 사용합니다.
 
 향후 확장 시
 
@@ -572,71 +596,147 @@ MPC 지갑은 DFNS 기반 외부 분산 서명 구조를 사용합니다.
 
 ---
 
+# Authentication
+
+## httpOnly Cookie JWT
+
+```text
+POST /auth/login  → Set-Cookie: accessToken (httpOnly, sameSite=lax)
+GET  /auth/me     → JwtAuthGuard (cookie 또는 Bearer)
+POST /auth/logout → clearCookie (secure in production)
+```
+
+- Access JWT payload에 `type: 'access'` 포함. `verify-email` 등 다른 type은 API 인증 **거부**.
+- 프론트는 `localStorage`에 JWT를 두지 않음. axios `withCredentials: true`.
+
+## 회원가입 · 이메일 인증 (데모)
+
+```text
+POST /auth/register → User(status=PENDING) + verify-email JWT + verifyUrl
+GET  /auth/verify-email?token=... → ACTIVE
+```
+
+- 실제 이메일 발송 없음. register 응답의 `verifyUrl` / UI “임시 이메일 인증” 버튼으로 활성화.
+- PENDING 사용자는 **10분 미인증 시 cron 삭제** (`AuthService.cleanupExpiredPendingUsers`).
+- 회원가입 비밀번호: **8자 이상** (`RegisterDto`).
+
+## Rate Limiting
+
+| 엔드포인트 | 제한 |
+| --- | --- |
+| `POST /auth/login` | 5회 / 60초 (IP) |
+| `POST /wallets/:id/withdraw` | 10회 / 60초 (IP) |
+
+---
+
+# WebSocket (`WithdrawGateway`)
+
+- 연결 시 cookie `accessToken` (또는 auth header) 검증.
+- ACTIVE 사용자만 `user:{userId}` room join.
+- `withdraw.updated` 이벤트는 **해당 user room**으로만 emit (타 사용자 출금 노출 방지).
+- CORS origin: **`FRONTEND_URL`** (기본 `http://localhost:5173`).
+
+---
+
+# Demo Data (Provisioning)
+
+코드에 `wallet.create` API는 없습니다. 시연하려면 PostgreSQL에 다음이 필요합니다.
+
+| 테이블 | 내용 |
+| --- | --- |
+| `User` | ACTIVE, role USER/ADMIN |
+| `Wallet` | userId당 6종 `walletType` 각 1개 (`@@unique([userId, walletType])`) |
+| `WalletLimit` | (선택) 1회/1일 한도 |
+| `Whitelist` | BACKEND_SEC용 (선택) |
+
+로그인 UI의 `test@test.com` / `1234` 등은 **개발자 로컬 DB에 미리 넣은 계정**을 가정합니다.  
+**seed SQL은 repo에 포함하지 않습니다** — 포트폴리오 배포 시 dump 또는 수동 insert가 필요합니다.
+
+---
+
 # Environment Variables
 
-.env.example
+`.env.example` 기준. **아래 “부팅 필수”를 모두 채워야** NestJS가 기동됩니다.
 
-```env
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/DB_NAME"
-APP_BASE_URL="http://localhost:3000"
+## 부팅 필수
 
-JWT_SECRET="change-me"
-JWT_EXPIRES_IN="7d"
+| 변수 | 사용처 |
+| --- | --- |
+| `DATABASE_URL` | Prisma |
+| `JWT_SECRET` | JWT + `totp.util` 계정별 OTP secret 파생 |
+| `APP_BASE_URL` | register verify URL |
+| `FRONTEND_URL` | REST CORS + WebSocket CORS |
+| `SEPOLIA_RPC_URL` | Signer / KMS / MPC provider |
+| `BACKEND_SIGNER_PRIVATE_KEY` | `SignerService` (가스·서명) |
+| `AWS_REGION`, `AWS_KMS_KEY_ID` | `KmsService` (+ `AWS_ACCESS_KEY_ID` 등 IAM) |
+| `DFNS_BASE_URL`, `DFNS_ORG_ID`, `DFNS_AUTH_TOKEN`, `DFNS_CREDENTIAL_ID`, `DFNS_WALLET_ID`, `DFNS_PRIVATE_KEY_PATH` | `MpcService` (PEM 파일 읽기) |
 
-SEPOLIA_RPC_URL="https://ethereum-sepolia.publicnode.com"
+## 지갑별 런타임 (Wallet 레코드 / 추가 env)
 
-BACKEND_SIGNER_ADDRESS="0x..."
-BACKEND_SIGNER_PRIVATE_KEY="0x..."
+| 지갑 | 비고 |
+| --- | --- |
+| BACKEND_SEC | DB `Whitelist`, Backend Signer |
+| MULTISIG | AdminApproval 2명, 만료 Scheduler |
+| POLICY_GUARD | Vault 컨트랙트 주소는 Wallet/executor 파라미터 |
+| KMS | AWS KMS Sign |
+| MPC | DFNS Transfer + Settlement polling |
+| SSS | 클라이언트 signedTx, [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md) |
 
-POLICY_GUARD_ADDRESS="0x..."
-POLICY_VAULT_ADDRESS="0x..."
-
-AWS_REGION="ap-northeast-2"
-AWS_KMS_KEY_ID="your-kms-key-id"
-AWS_ACCESS_KEY_ID="your-access-key-id"
-AWS_SECRET_ACCESS_KEY="your-secret-access-key"
-
-DFNS_BASE_URL="https://api.dfns.io"
-DFNS_AUTH_TOKEN="..."
-DFNS_WALLET_ID="..."
-DFNS_NETWORK="EthereumSepolia"
-DFNS_ORG_ID="your-org-id"
-DFNS_CREDENTIAL_ID="your-credential-id"
-DFNS_PRIVATE_KEY_PATH="/path/to/private_key.pem"
-
-DEV_TOTP_SECRET=""
-```
-## Frontend .env.example
+## Frontend (`apps/web/.env`)
 
 ```env
 VITE_API_URL="http://localhost:3000"
 VITE_SEPOLIA_RPC_URL="https://ethereum-sepolia.publicnode.com"
 ```
 
-실제 .env 파일은 Git에 포함하지 않습니다.
+실제 `.env`는 Git에 포함하지 않습니다.
 
 ---
 
-# 실행 방법
-
-## Backend
+# Deployment
 
 ```bash
-cd apps/api
-cp .env.example .env
-npm install
-npx prisma generate
-npx prisma migrate dev
-npm run start:dev
+# API
+npm run build --workspace apps/api
+NODE_ENV=production FRONTEND_URL=https://your-web.example npm run start:prod --workspace apps/api
+
+# Web (build-time)
+VITE_API_URL=https://your-api.example npm run build --workspace apps/web
 ```
 
-## Frontend
+| 항목 | 설명 |
+| --- | --- |
+| `FRONTEND_URL` | API CORS + Socket.IO origin. **프론트 배포 URL과 정확히 일치** |
+| `VITE_API_URL` | 프론트 빌드 시 API base URL |
+| HTTPS | production cookie `secure: true` → API·Web 모두 HTTPS 권장 |
+| DB | `npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` |
+
+---
+
+# 실행 방법 (로컬)
+
+루트에서 workspace 명령 사용 권장 ([`README.md`](../../README.md) Quick Start 참고).
 
 ```bash
-cd apps/web
-cp .env.example .env
+# 루트
 npm install
-npm run dev
+cp apps/api/.env.example apps/api/.env   # 필수 env 모두 설정
+cp apps/web/.env.example apps/web/.env
+npm --workspace apps/api exec prisma migrate dev
+npm run dev:api
+npm run dev:web
+```
+
+---
+
+# Maintenance Scripts
+
+| 경로 | 설명 |
+| --- | --- |
+| [`scripts/delete-sss.ts`](../../scripts/delete-sss.ts) | SSS 지갑 관련 레코드 일괄 삭제 |
+
+```bash
+npm --workspace apps/api exec ts-node -- ../../scripts/delete-sss.ts
 ```
 
 ---

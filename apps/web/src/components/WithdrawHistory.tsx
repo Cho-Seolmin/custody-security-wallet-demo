@@ -1,6 +1,7 @@
 import type { WithdrawItem } from "../types/wallet";
 import { formatEther } from "ethers";
 import { shortenAddress } from "../utils/address";
+import { getStatusLabel, getStatusTone } from "../utils/withdrawStatus";
 import "../styles/page.css";
 
 type Props = {
@@ -8,36 +9,6 @@ type Props = {
 };
 
 export default function WithdrawHistory({ items }: Props) {
-  const getStatusTone = (status: string) => {
-    switch (status) {
-      case "EXECUTED":
-        return "success";
-      case "FAILED":
-        return "danger";
-      case "PENDING":
-        return "warning";
-      case "PROCESSING":
-      case "QUEUED":
-        return "primary";
-      case "REJECTED":
-      case "EXPIRED":
-      default:
-        return "gray";
-    }
-  };
-
-  const getStatusLabel = (item: WithdrawItem) => {
-    if (
-      item.status === "PENDING" &&
-      item.executionType === "MULTISIG" &&
-      typeof item.approvalCount === "number"
-    ) {
-      return `PENDING (${item.approvalCount}/${item.requiredApprovalCount ?? 2})`;
-    }
-
-    return item.status;
-  };
-
   if (items.length === 0) {
     return <p className="empty-state">출금 이력이 없습니다.</p>;
   }

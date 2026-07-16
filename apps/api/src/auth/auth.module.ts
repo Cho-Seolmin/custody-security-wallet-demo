@@ -1,24 +1,26 @@
-import { Module } from "@nestjs/common";
-import { JwtModule } from "@nestjs/jwt";
-import { PassportModule } from "@nestjs/passport";
-import { AuthController } from "./auth.controller";
-import { AuthService } from "./auth.service";
-import { JwtStrategy } from "./jwt.strategy";
-import type { StringValue } from "ms";
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './jwt.strategy';
+import { LoginThrottlerGuard } from './guards/login-throttler.guard';
+import type { StringValue } from 'ms';
 
-
-const expiresIn = (process.env.JWT_EXPIRES_IN ?? "7d") as StringValue;
+const expiresIn = (process.env.JWT_EXPIRES_IN ?? '7d') as StringValue;
 
 @Module({
   imports: [
     PassportModule,
+    ThrottlerModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET!,
       signOptions: { expiresIn },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, LoginThrottlerGuard],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

@@ -1,5 +1,20 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+
+type ReservedQueueRow = {
+  id: string;
+  withdrawRequestId: string;
+  status: string;
+  attemptCount: number;
+  maxAttempts: number;
+  availableAt: Date;
+  reservedAt: Date | null;
+  workerId: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class QueueService {
@@ -9,7 +24,7 @@ export class QueueService {
     return this.prisma.withdrawalQueue.create({
       data: {
         withdrawRequestId,
-        status: "PENDING",
+        status: 'PENDING',
       },
       select: {
         id: true,
@@ -28,44 +43,35 @@ export class QueueService {
       where: { withdrawRequestId },
     });
   }
+
   async reserveNext(workerId: string) {
-    const job = await this.prisma.withdrawalQueue.findFirst({
-      where: {
-        OR: [
-          { status: "PENDING" },
-          {
-            status: "RETRY_WAIT",
-            availableAt: { lte: new Date() },
-          },
-        ],
-      },
-      orderBy: { createdAt: "asc" },
-    });
-  
+    const rows = await this.prisma.$queryRaw<ReservedQueueRow[]>`
+      UPDATE "WithdrawalQueue" AS w
+      SET
+        status = 'RESERVED',
+        "reservedAt" = NOW(),
+        "workerId" = ${workerId},
+        "updatedAt" = NOW()
+      FROM (
+        SELECT id
+        FROM "WithdrawalQueue"
+        WHERE
+          status = 'PENDING'
+          OR (
+            status = 'RETRY_WAIT'
+            AND "availableAt" <= NOW()
+          )
+        ORDER BY "createdAt" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      ) AS candidate
+      WHERE w.id = candidate.id
+      RETURNING w.*;
+    `;
+
+    const job = rows[0];
     if (!job) return null;
-  
-    const reserved = await this.prisma.withdrawalQueue.updateMany({
-      where: {
-        id: job.id,
-        OR: [
-          { status: "PENDING" },
-          {
-            status: "RETRY_WAIT",
-            availableAt: { lte: new Date() },
-          },
-        ],
-      },
-      data: {
-        status: "RESERVED",
-        reservedAt: new Date(),
-        workerId,
-      },
-    });
-  
-    if (reserved.count === 0) {
-      return null;
-    }
-  
+
     return this.prisma.withdrawalQueue.findUnique({
       where: { id: job.id },
     });
@@ -75,16 +81,16 @@ export class QueueService {
     return this.prisma.withdrawalQueue.update({
       where: { id: queueId },
       data: {
-        status: "RUNNING",
+        status: 'RUNNING',
       },
     });
   }
-  
+
   async markSucceeded(queueId: string) {
     return this.prisma.withdrawalQueue.update({
       where: { id: queueId },
       data: {
-        status: "SUCCEEDED",
+        status: 'SUCCEEDED',
       },
     });
   }
@@ -102,7 +108,7 @@ export class QueueService {
     });
 
     if (!queue) {
-      throw new NotFoundException("Queue job not found");
+      throw new NotFoundException('Queue job not found');
     }
 
     const nextAttempt = queue.attemptCount + 1;
@@ -111,7 +117,7 @@ export class QueueService {
     return this.prisma.withdrawalQueue.update({
       where: { id: queueId },
       data: {
-        status: "RETRY_WAIT",
+        status: 'RETRY_WAIT',
         attemptCount: nextAttempt,
         lastErrorCode: params?.errorCode,
         lastErrorMessage: params?.errorMessage,
@@ -130,7 +136,7 @@ export class QueueService {
     return this.prisma.withdrawalQueue.update({
       where: { id: queueId },
       data: {
-        status: "DEAD",
+        status: 'DEAD',
         lastErrorCode: params?.errorCode,
         lastErrorMessage: params?.errorMessage,
       },

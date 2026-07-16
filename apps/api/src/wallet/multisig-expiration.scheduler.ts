@@ -1,8 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { Cron } from "@nestjs/schedule";
-import { PrismaService } from "../prisma/prisma.service";
-import { WithdrawalAuditService } from "./withdrawal-audit.service";
-import { WithdrawGateway } from "./withdraw.gateway";
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { PrismaService } from '../prisma/prisma.service';
+import { WithdrawalAuditService } from './withdrawal-audit.service';
+import { WithdrawGateway } from './withdraw.gateway';
 
 @Injectable()
 export class MultisigExpirationScheduler {
@@ -14,18 +14,18 @@ export class MultisigExpirationScheduler {
     private readonly withdrawGateway: WithdrawGateway,
   ) {}
 
-  @Cron("*/1 * * * *")
+  @Cron('*/1 * * * *')
   async expirePendingMultisigWithdraws() {
     const now = new Date();
 
     const expiredWithdraws = await this.prisma.withdrawRequest.findMany({
       where: {
-        status: "PENDING",
+        status: 'PENDING',
         expiresAt: {
           lt: now,
         },
         wallet: {
-          walletType: "MULTISIG",
+          walletType: 'MULTISIG',
         },
       },
       include: {
@@ -41,11 +41,11 @@ export class MultisigExpirationScheduler {
       const updated = await this.prisma.withdrawRequest.updateMany({
         where: {
           id: wr.id,
-          status: "PENDING",
+          status: 'PENDING',
         },
         data: {
-          status: "EXPIRED",
-          failureReason: "Multisig approval expired",
+          status: 'EXPIRED',
+          failureReason: 'Multisig approval expired',
           finalizedAt: new Date(),
         },
       });
@@ -58,9 +58,9 @@ export class MultisigExpirationScheduler {
         withdrawRequestId: wr.id,
         walletId: wr.walletId,
         userId: wr.wallet.userId,
-        eventType: "EXPIRED",
-        actorType: "SYSTEM",
-        message: "Multisig approval expired",
+        eventType: 'EXPIRED',
+        actorType: 'SYSTEM',
+        message: 'Multisig approval expired',
         data: {
           expiresAt: wr.expiresAt,
         },
@@ -70,8 +70,9 @@ export class MultisigExpirationScheduler {
         withdrawRequestId: wr.id,
         walletId: wr.walletId,
         walletType: wr.wallet.walletType,
-        status: "EXPIRED",
-        message: "Multisig approval expired",
+        userId: wr.wallet.userId,
+        status: 'EXPIRED',
+        message: 'Multisig approval expired',
       });
     }
   }

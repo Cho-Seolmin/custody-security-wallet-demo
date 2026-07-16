@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { getMe, changePassword } from "../api/auth";
+import { getMe, changePassword, getTotpSetup } from "../api/auth";
 import { getWallets, getWalletLimits, getWalletWhitelist } from "../api/wallet";
 import { getPreferences, updatePreferences } from "../api/settings";
 import { getSystemStatus } from "../api/system";
-import type { Me } from "../types/auth";
+import type { Me, TotpSetup } from "../types/auth";
 import type { Wallet, WalletLimit } from "../types/wallet";
 import type { BalanceUnit, SystemStatus, UserPreference } from "../types/settings";
 import {
@@ -15,16 +15,16 @@ import {
 import { applyTheme, getStoredTheme, type Theme } from "../lib/theme";
 import { formatEther } from "ethers";
 import { shortenAddress } from "../utils/address";
-import AppShell from "../components/AppShell";
+import { SSS_DEMO_RECOVERY_DOC_URL } from "../constants/sssDemoRecovery";
 import "../styles/page.css";
 
 const SECURITY_SUMMARY: Record<string, string> = {
   BACKEND_SEC: "화이트리스트에 등록된 주소로만 출금이 가능합니다.",
-  MULTISIG: "관리자 2인의 승인이 완료되어야 출금이 실행됩니다.",
+  MULTISIG: "앱 레벨 관리자 2인 승인 후 출금이 실행됩니다. (온체인 멀티시그 아님)",
   POLICY_GUARD: "1회 출금 한도를 초과하면 온체인에서 자동으로 거래가 차단됩니다.",
   KMS: "AWS KMS를 통한 인증 서명을 거쳐 출금이 수행됩니다.",
   MPC: "Dfns 기반 분산 키 서명으로 출금이 수행됩니다.",
-  SSS: "3-of-5 복구 키로 복구한 서명이 있어야 1회 출금이 가능합니다.",
+  SSS: "Sepolia 데모: 공개 3/5 샤드로 복구한 private key로 브라우저에서 1회 출금 서명이 가능합니다.",
 };
 
 const WALLET_TYPE_LABELS: Record<string, string> = {
@@ -143,6 +143,8 @@ export default function SettingsPage() {
   const [pwMessage, setPwMessage] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSubmitting, setPwSubmitting] = useState(false);
+  const [totpSetup, setTotpSetup] = useState<TotpSetup | null>(null);
+  const [totpError, setTotpError] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -179,6 +181,13 @@ export default function SettingsPage() {
           } catch {
             setWhitelistCount(null);
           }
+        }
+
+        try {
+          const totp = await getTotpSetup();
+          setTotpSetup(totp);
+        } catch {
+          setTotpError("OTP 설정 정보를 불러오지 못했습니다.");
         }
       } catch (err: any) {
         setError(err?.response?.data?.message || "설정 정보 조회 실패");
@@ -259,11 +268,7 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return (
-      <AppShell>
-        <div className="loading-screen">불러오는 중...</div>
-      </AppShell>
-    );
+    return <div className="loading-screen">불러오는 중...</div>;
   }
 
   const hasBackendSecWallet = wallets.some((w) => w.walletType === "BACKEND_SEC");
@@ -272,8 +277,7 @@ export default function SettingsPage() {
   const representativeLimit = representativeWallet ? limits[representativeWallet.id] : null;
 
   return (
-    <AppShell>
-      <div className="page">
+    <div className="page">
         <header className="page__header">
           <div>
             <h1 className="page__title">Settings</h1>
@@ -366,6 +370,25 @@ export default function SettingsPage() {
 
             <div className="card section-card">
               <div className="section-header">
+                <h2>SSS Demo Recovery</h2>
+                <span className="badge badge--gray">Sepolia</span>
+              </div>
+              <p style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "12px" }}>
+                포트폴리오 시연용으로 3/5 샤드가 공개되어 있습니다. 오프라인 도구로 private key를 복구한 뒤 SSS
+                지갑 카드의 Private Key 입력란에 1회 사용하세요. (서버로 전송되지 않음)
+              </p>
+              <a
+                href={SSS_DEMO_RECOVERY_DOC_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontWeight: 600, fontSize: "14px" }}
+              >
+                SSS 데모 복구 가이드 (공개 샤드) →
+              </a>
+            </div>
+
+            <div className="card section-card">
+              <div className="section-header">
                 <h2>지갑별 상세 보안 설정</h2>
               </div>
 
@@ -406,17 +429,36 @@ export default function SettingsPage() {
             <div className="card section-card">
               <div className="section-header">
                 <h2>2단계 인증 (2FA)</h2>
-                <span className="badge badge--gray">준비중</span>
+                <span className="badge badge--success">계정별 OTP</span>
               </div>
               <p style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "14px" }}>
-                현재는 고액 출금 시 전 계정 공용 OTP를 사용합니다. 계정별 개인 OTP 등록 기능은 준비 중입니다.
+                0.01 ETH 이상 출금 시 계정별 OTP가 필요합니다. Google Authenticator 등에 아래 secret을 등록하세요.
               </p>
+              {totpError && (
+                <div className="alert alert--danger" style={{ marginBottom: "14px" }}>
+                  {totpError}
+                </div>
+              )}
+              {totpSetup && (
+                <div className="info-box info-box--neutral" style={{ marginBottom: "14px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "6px" }}>
+                    OTP Secret
+                  </div>
+                  <code style={{ wordBreak: "break-all", fontSize: "13px" }}>{totpSetup.secret}</code>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: "12px 0 6px" }}>
+                    otpauth URL
+                  </div>
+                  <code style={{ wordBreak: "break-all", fontSize: "12px" }}>{totpSetup.otpauthUrl}</code>
+                </div>
+              )}
               <div className="settings-row">
                 <div className="settings-row__text">
-                  <div className="settings-row__label">계정 2FA 사용</div>
-                  <div className="settings-row__desc">Google Authenticator 등으로 개인 OTP를 등록합니다.</div>
+                  <div className="settings-row__label">고액 출금 OTP</div>
+                  <div className="settings-row__desc">
+                    계정마다 고유 secret이 생성됩니다. (JWT_SECRET 기반 파생)
+                  </div>
                 </div>
-                <Switch checked={false} onChange={() => {}} disabled />
+                <Switch checked={Boolean(totpSetup)} onChange={() => {}} disabled />
               </div>
             </div>
           </>
@@ -488,35 +530,47 @@ export default function SettingsPage() {
               </div>
 
               <div className="field">
-                <label className="input-label">현재 비밀번호</label>
+                <label className="input-label" htmlFor="settings-current-password">
+                  현재 비밀번호
+                </label>
                 <input
+                  id="settings-current-password"
                   type="password"
                   className="input"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="현재 비밀번호"
+                  autoComplete="current-password"
                 />
               </div>
 
               <div className="field">
-                <label className="input-label">새 비밀번호 (4자 이상)</label>
+                <label className="input-label" htmlFor="settings-new-password">
+                  새 비밀번호 (8자 이상)
+                </label>
                 <input
+                  id="settings-new-password"
                   type="password"
                   className="input"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="새 비밀번호"
+                  autoComplete="new-password"
                 />
               </div>
 
               <div className="field">
-                <label className="input-label">새 비밀번호 확인</label>
+                <label className="input-label" htmlFor="settings-confirm-password">
+                  새 비밀번호 확인
+                </label>
                 <input
+                  id="settings-confirm-password"
                   type="password"
                   className="input"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="새 비밀번호 확인"
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -541,15 +595,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="field">
-              <label className="input-label">Default Network</label>
-              <select className="input" value="sepolia" disabled>
+              <label className="input-label" htmlFor="settings-default-network">
+                Default Network
+              </label>
+              <select id="settings-default-network" className="input" value="sepolia" disabled>
                 <option value="sepolia">Ethereum Sepolia</option>
               </select>
             </div>
 
             <div className="field">
-              <label className="input-label">Default Wallet Type</label>
+              <label className="input-label" htmlFor="settings-default-wallet">
+                Default Wallet Type
+              </label>
               <select
+                id="settings-default-wallet"
                 className="input"
                 value={preferences.defaultWalletId ?? ""}
                 onChange={(e) => savePreferences({ defaultWalletId: e.target.value || null })}
@@ -766,6 +825,5 @@ export default function SettingsPage() {
 
         {error && <div className="alert alert--danger">{error}</div>}
       </div>
-    </AppShell>
   );
 }

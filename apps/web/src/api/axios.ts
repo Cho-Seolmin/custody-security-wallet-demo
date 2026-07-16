@@ -1,15 +1,39 @@
 import axios from "axios";
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+export { API_BASE_URL };
+
 export const api = axios.create({
-  baseURL: "http://localhost:3000",
+  baseURL: API_BASE_URL,
+  withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("accessToken");
+// A 401 from these endpoints means "wrong credentials", not "your session
+// expired" — they must not trigger the global logout/redirect below.
+const AUTH_ENTRY_POINTS = ["/auth/login", "/auth/register", "/auth/logout"];
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status;
+    const requestUrl: string = error?.config?.url ?? "";
+    const isAuthEntryPoint = AUTH_ENTRY_POINTS.some((path) =>
+      requestUrl.includes(path),
+    );
 
-  return config;
-});
+    if ((status === 401 || status === 403) && !isAuthEntryPoint) {
+      try {
+        await api.post("/auth/logout");
+      } catch {
+        // Ignore logout failures during session expiry handling.
+      }
+
+      if (window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
+    }
+
+    return Promise.reject(error);
+  },
+);

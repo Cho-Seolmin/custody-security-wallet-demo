@@ -1,10 +1,13 @@
 import {  useEffect, useState,useRef } from "react";
 import { createWithdraw, getWalletBalance, getWalletWithdraws , updateWalletWhitelist,getWalletWhitelist, } from "../api/wallet";
 import { getPreferences } from "../api/settings";
+import type { BalanceUnit } from "../types/settings";
 import type { Wallet as WalletType, WalletBalance, WithdrawItem } from "../types/wallet";
 import WithdrawHistory from "./WithdrawHistory";
-import { Wallet ,formatEther, isAddress, parseEther, JsonRpcProvider  } from "ethers";
+import { Wallet , isAddress, parseEther, JsonRpcProvider  } from "ethers";
 import { shortenAddress } from "../utils/address";
+import { formatBalancePrimary, formatBalanceSecondary } from "../utils/balance";
+import { SSS_DEMO_RECOVERY_DOC_URL } from "../constants/sssDemoRecovery";
 import { socket } from "../lib/socket";
 import "../styles/page.css";
 
@@ -34,6 +37,7 @@ export default function WalletCard({ wallet }: Props) {
 
   const [showGuide, setShowGuide] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [balanceUnit, setBalanceUnit] = useState<BalanceUnit>("ETH");
 
   const securityDescriptions: Record<string, string> = {
     BACKEND_SEC: `화이트리스트 기반 출금 제어 지갑
@@ -42,11 +46,11 @@ export default function WalletCard({ wallet }: Props) {
   3. 화이트리스트 저장 버튼 클릭하여 DB에 등록
   4. 해당 주소로만 출금 가능`,
   
-    MULTISIG: `관리자 승인 기반 2-of-2 출금 구조
+    MULTISIG: `앱 레벨 관리자 승인 기반 2-of-2 출금 구조 (온체인 멀티시그 아님)
   1. 출금 요청
-  2. 관리자 페이지에서 승인 (승인대기 상태 에서 10분 후 자동 삭제)
+  2. 관리자 페이지에서 승인 (승인대기 상태에서 10분 후 자동 만료)
   3. 다른 관리자 계정으로 동일하게 승인
-  4. 출금 완료`,
+  4. 승인 완료 후 백엔드 서명으로 출금 실행`,
   
     POLICY_GUARD: `PolicyVault + PolicyGuard 구조
   1. 1회 출금 한도: 0.001 ETH
@@ -58,8 +62,8 @@ export default function WalletCard({ wallet }: Props) {
     MPC: `분산 키 서명 기반 지갑
   1. Dfns API를 통한 외부 분산 키 서명으로 출금 수행`,
   
-    SSS: `3-of-5 복구 키 기반 지갑
-  1. 5개의 키 중 3개로 private key 복구 (복구 프로그램 다운 후 실행)
+    SSS: `3-of-5 복구 키 기반 지갑 (Sepolia 데모: 공개 샤드로 복구 가능)
+  1. 오프라인 복구 가이드에서 3개 샤드로 private key 복구
   2. 브라우저에서 signedTx 생성
   3. 서버는 privateKey를 저장하지 않고 signedTx만 검증 및 broadcast
   4. 검증 완료 후 1회 출금 가능, 출금 후 다시 잠금`
@@ -78,8 +82,7 @@ export default function WalletCard({ wallet }: Props) {
     try {
       setMessage("");
       const data = await getWalletWhitelist(wallet.id);
-      console.log("loaded whitelist", wallet.id, data);
-  
+
       setWhitelistAddresses(data.map((item: any) => item.address));
   
       if (data.length === 0) {
@@ -238,12 +241,7 @@ export default function WalletCard({ wallet }: Props) {
     try {
       setMessage("");
   
-      console.log("save walletId:", wallet.id);
-      console.log("save whitelistAddresses:", whitelistAddresses);
-  
       const data = await updateWalletWhitelist(wallet.id, whitelistAddresses);
-  
-      console.log("save response:", data);
   
       setWhitelistAddresses(data.map((item: any) => item.address));
       setMessage("화이트리스트가 저장되었습니다.");
@@ -294,7 +292,12 @@ export default function WalletCard({ wallet }: Props) {
 
     getPreferences()
       .then((data) => {
-        if (!cancelled) setAutoRefreshEnabled(data.autoRefreshEnabled !== false);
+        if (!cancelled) {
+          setAutoRefreshEnabled(data.autoRefreshEnabled !== false);
+          if (data.balanceUnit === "ETH" || data.balanceUnit === "WEI") {
+            setBalanceUnit(data.balanceUnit);
+          }
+        }
       })
       .catch(() => {
         // 환경설정 조회 실패 시 기본값(자동 새로고침 사용) 유지
@@ -370,6 +373,7 @@ export default function WalletCard({ wallet }: Props) {
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <div className="card-title">{wallet.walletType}</div>
               <button
+                type="button"
                 className="btn btn--ghost"
                 style={{ height: "28px", padding: "0 10px", fontSize: "12px" }}
                 onClick={() => setShowGuide((prev) => !prev)}
@@ -412,7 +416,12 @@ export default function WalletCard({ wallet }: Props) {
           <div style={{ fontSize: "13.5px", fontWeight: 600 }}>
             주소: {shortenAddress(displayAddress)}
           </div>
-          <button className="btn btn--ghost" style={{ height: "30px", padding: "0 12px" }} onClick={() => copy(displayAddress)}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            style={{ height: "30px", padding: "0 12px" }}
+            onClick={() => copy(displayAddress)}
+          >
             복사
           </button>
         </div>
@@ -435,7 +444,11 @@ export default function WalletCard({ wallet }: Props) {
     <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>화이트리스트 관리</h4>
 
     <div className="field">
+      <label className="input-label" htmlFor={`${wallet.id}-whitelist-input`}>
+        허용할 주소
+      </label>
       <input
+        id={`${wallet.id}-whitelist-input`}
         type="text"
         className="input"
         value={whitelistInput}
@@ -452,13 +465,13 @@ export default function WalletCard({ wallet }: Props) {
         marginBottom: "12px",
       }}
     >
-      <button className="btn btn--secondary" onClick={handleAddWhitelistAddress}>주소 추가</button>
+      <button type="button" className="btn btn--secondary" onClick={handleAddWhitelistAddress}>주소 추가</button>
 
-      <button className="btn btn--ghost" onClick={handleLoadWhitelist}>
+      <button type="button" className="btn btn--ghost" onClick={handleLoadWhitelist}>
         화이트리스트 불러오기
       </button>
 
-      <button className="btn btn--primary" onClick={handleSaveWhitelist}>
+      <button type="button" className="btn btn--primary" onClick={handleSaveWhitelist}>
         화이트리스트 저장
       </button>
     </div>
@@ -470,11 +483,12 @@ export default function WalletCard({ wallet }: Props) {
             <span>{shortenAddress(address)}</span>
 
             <div style={{ display: "flex", gap: "4px" }}>
-              <button className="chip-btn" onClick={() => copy(address)}>
+              <button type="button" className="chip-btn" onClick={() => copy(address)}>
                 복사
               </button>
 
               <button
+                type="button"
                 className="chip-btn"
                 onClick={() => handleRemoveWhitelistAddress(address)}
               >
@@ -495,15 +509,29 @@ export default function WalletCard({ wallet }: Props) {
     <div className="info-box info-box--neutral" style={{ marginBottom: "12px" }}>
       private key는 서버로 저장되지 않고, 브라우저에서 signedTx 생성에만 사용됩니다.
       서버는 signedTx의 signer, recipient, value, chainId, nonce를 검증한 뒤 broadcast합니다.
+      {" "}
+      <a
+        href={SSS_DEMO_RECOVERY_DOC_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ fontWeight: 600 }}
+      >
+        SSS 데모 복구 가이드 (공개 샤드)
+      </a>
     </div>
 
     <div className="field">
+      <label className="input-label" htmlFor={`${wallet.id}-sss-private-key`}>
+        SSS Private Key
+      </label>
       <input
+        id={`${wallet.id}-sss-private-key`}
         type="password"
         className="input"
         value={sssPrivateKey}
         onChange={(e) => setSssPrivateKey(e.target.value)}
         placeholder="복구된 private key 입력"
+        autoComplete="off"
       />
     </div>
   </div>
@@ -513,8 +541,11 @@ export default function WalletCard({ wallet }: Props) {
               <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>출금 요청</h4>
 
               <div className="field">
-                <label className="input-label">받는 주소</label>
+                <label className="input-label" htmlFor={`${wallet.id}-withdraw-to`}>
+                  받는 주소
+                </label>
                 <input
+                  id={`${wallet.id}-withdraw-to`}
                   type="text"
                   className="input"
                   value={toAddress}
@@ -524,8 +555,11 @@ export default function WalletCard({ wallet }: Props) {
               </div>
 
               <div className="field">
-                <label className="input-label">금액 (ETH)</label>
+                <label className="input-label" htmlFor={`${wallet.id}-withdraw-amount`}>
+                  금액 (ETH)
+                </label>
                 <input
+                  id={`${wallet.id}-withdraw-amount`}
                   type="text"
                   className="input"
                   value={amount}
@@ -535,17 +569,28 @@ export default function WalletCard({ wallet }: Props) {
               </div>
 
               <div className="field">
-                <label className="input-label">OTP 코드 (0.01 ETH 이상 출금 시 필요)</label>
+                <label className="input-label" htmlFor={`${wallet.id}-withdraw-otp`}>
+                  OTP 코드 (0.01 ETH 이상 출금 시 필요)
+                </label>
                 <input
+                  id={`${wallet.id}-withdraw-otp`}
                   type="text"
                   className="input"
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value)}
                   placeholder="OTP 코드"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                 />
               </div>
 
-              <button className="btn btn--primary" style={{ width: "100%" }} onClick={handleWithdraw} disabled={withdrawLoading}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ width: "100%" }}
+                onClick={handleWithdraw}
+                disabled={withdrawLoading}
+              >
                 {withdrawLoading ? "출금 요청 중..." : "출금 요청"}
               </button>
             </div>
@@ -571,6 +616,7 @@ export default function WalletCard({ wallet }: Props) {
                 조회 &amp; 활동내역
               </div>
               <button
+                type="button"
                 className="btn btn--ghost"
                 style={{ height: "30px", padding: "0 12px" }}
                 onClick={() => {
@@ -582,7 +628,10 @@ export default function WalletCard({ wallet }: Props) {
               </button>
             </div>
 
-            {balance && (
+            {balance && (() => {
+              const secondaryBalance = formatBalanceSecondary(balance.balanceWei, balanceUnit);
+
+              return (
               <div
                 style={{
                   marginBottom: "16px",
@@ -593,16 +642,19 @@ export default function WalletCard({ wallet }: Props) {
                 }}
               >
                 <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-primary-hover)", marginBottom: "4px" }}>
-                  잔액
+                  잔액 ({balanceUnit})
                 </div>
                 <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--color-text)" }}>
-                  {formatEther(balance.balanceWei)} ETH
+                  {formatBalancePrimary(balance.balanceWei, balanceUnit)}
                 </div>
-                <div style={{ wordBreak: "break-all", fontSize: "11.5px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                  {balance.balanceWei} wei
-                </div>
+                {secondaryBalance && (
+                  <div style={{ wordBreak: "break-all", fontSize: "11.5px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                    {secondaryBalance}
+                  </div>
+                )}
               </div>
-            )}
+              );
+            })()}
 
             {showWithdraws && (
               <div>
@@ -619,6 +671,7 @@ export default function WalletCard({ wallet }: Props) {
 
                 {visibleWithdrawCount < withdraws.length && (
                   <button
+                    type="button"
                     className="btn btn--secondary"
                     onClick={() => setVisibleWithdrawCount((prev) => prev + 5)}
                     style={{ marginTop: "10px" }}

@@ -1,5 +1,6 @@
 import { approveWithdraw, rejectWithdraw } from "../api/admin";
 import type { WithdrawItem } from "../types/wallet";
+import { getStatusLabel, getStatusTone } from "../utils/withdrawStatus";
 import { formatEther } from "ethers";
 import "../styles/page.css";
 
@@ -9,35 +10,6 @@ type Props = {
 };
 
 export default function AdminWithdrawList({ items, onRefresh }: Props) {
-  const getStatusTone = (status: string) => {
-    switch (status) {
-      case "EXECUTED":
-        return "success";
-      case "FAILED":
-        return "danger";
-      case "PENDING":
-        return "warning";
-      case "PROCESSING":
-      case "QUEUED":
-        return "primary";
-      case "REJECTED":
-      case "EXPIRED":
-      default:
-        return "gray";
-    }
-  };
-
-  const getStatusLabel = (item: WithdrawItem) => {
-    if (
-      item.status === "PENDING" &&
-      typeof item.approvalCount === "number"
-    ) {
-      return `PENDING (${item.approvalCount}/${item.requiredApprovalCount ?? 2})`;
-    }
-
-    return item.status;
-  };
-
   const handleApprove = async (id: string) => {
     const ok = window.confirm("정말 승인하시겠습니까?");
     if (!ok) return;
@@ -110,10 +82,10 @@ export default function AdminWithdrawList({ items, onRefresh }: Props) {
 
           {item.status === "PENDING" && (
             <div style={{ display: "flex", gap: "8px" }}>
-              <button className="btn btn--primary" onClick={() => handleApprove(item.id)}>
+              <button type="button" className="btn btn--primary" onClick={() => handleApprove(item.id)}>
                 승인
               </button>
-              <button className="btn btn--danger" onClick={() => handleReject(item.id)}>
+              <button type="button" className="btn btn--danger" onClick={() => handleReject(item.id)}>
                 거절
               </button>
             </div>

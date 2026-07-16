@@ -1,12 +1,22 @@
 import { api } from "./axios";
+import type { LoginResponse, Me, TotpSetup } from "../types/auth";
 
-export async function login(email: string, password: string) {
-  const res = await api.post("/auth/login", { email, password });
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const res = await api.post<LoginResponse>("/auth/login", { email, password });
   return res.data;
 }
 
-export async function getMe() {
-  const res = await api.get("/auth/me");
+export async function logout(): Promise<void> {
+  await api.post("/auth/logout");
+}
+
+export async function getMe(): Promise<Me> {
+  const res = await api.get<Me>("/auth/me");
+  return res.data;
+}
+
+export async function getTotpSetup(): Promise<TotpSetup> {
+  const res = await api.get<TotpSetup>("/auth/totp-setup");
   return res.data;
 }
 
