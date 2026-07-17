@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DfnsApiClient } from '@dfns/sdk';
 import { AsymmetricKeySigner } from '@dfns/sdk-keysigner';
-import { readFileSync } from 'fs';
 import { JsonRpcProvider } from 'ethers';
+import { loadDfnsPrivateKeyPem } from './dfns-private-key.util';
 
 type DfnsTransferStatus =
   | 'Pending'
@@ -25,10 +25,7 @@ export class MpcService {
     const orgId = process.env.DFNS_ORG_ID;
     const authToken = process.env.DFNS_AUTH_TOKEN;
     const credId = process.env.DFNS_CREDENTIAL_ID;
-    const privateKeyPath = process.env.DFNS_PRIVATE_KEY_PATH;
-    if (!privateKeyPath) throw new Error('DFNS_PRIVATE_KEY_PATH is missing');
-
-    const privateKey = readFileSync(privateKeyPath, 'utf8').trim();
+    const privateKey = loadDfnsPrivateKeyPem();
     const walletId = process.env.DFNS_WALLET_ID;
     const rpc = process.env.SEPOLIA_RPC_URL;
 
@@ -36,7 +33,6 @@ export class MpcService {
     if (!orgId) throw new Error('DFNS_ORG_ID is missing');
     if (!authToken) throw new Error('DFNS_AUTH_TOKEN is missing');
     if (!credId) throw new Error('DFNS_CREDENTIAL_ID is missing');
-    if (!privateKey) throw new Error('DFNS_PRIVATE_KEY_PEM is missing');
     if (!walletId) throw new Error('DFNS_WALLET_ID is missing');
     if (!rpc) throw new Error('SEPOLIA_RPC_URL is missing');
 

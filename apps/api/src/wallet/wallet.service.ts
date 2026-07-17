@@ -15,6 +15,7 @@ import { MpcService } from './mpc.service';
 import { verifyUserTotp } from '../auth/totp.util';
 import { sanitizeWithdrawMetadataForApi } from './withdraw-metadata.util';
 import { Prisma } from '@prisma/client';
+import { WalletProvisionService } from './wallet-provision.service';
 
 @Injectable()
 export class WalletService {
@@ -26,6 +27,7 @@ export class WalletService {
     private queueService: QueueService,
     private kmsService: KmsService,
     private mpcService: MpcService,
+    private walletProvisionService: WalletProvisionService,
   ) {}
 
   private readonly queuedWithdrawSelect = {
@@ -38,6 +40,18 @@ export class WalletService {
     approvedBy: true,
     txHash: true,
   } as const;
+
+  createBackendSecWallet(userId: string) {
+    return this.walletProvisionService.createBackendSecWallet(userId);
+  }
+
+  createMultisigWallet(userId: string) {
+    return this.walletProvisionService.createMultisigWallet(userId);
+  }
+
+  registerSssWallet(userId: string, address: string) {
+    return this.walletProvisionService.registerSssWallet(userId, address);
+  }
 
   private isIdempotencyConflict(error: unknown): boolean {
     return (
@@ -189,12 +203,21 @@ export class WalletService {
   async list(userId: string) {
     const wallets = await this.prisma.wallet.findMany({
       where: { userId },
-      select: { id: true, walletType: true, address: true, createdAt: true },
+      select: {
+        id: true,
+        walletType: true,
+        address: true,
+        createdAt: true,
+        encryptedPrivateKey: true,
+      },
       orderBy: { createdAt: 'asc' },
     });
 
     return Promise.all(
       wallets.map(async (wallet) => {
+        const { encryptedPrivateKey, ...safeWallet } = wallet;
+        const isUserProvisioned = Boolean(encryptedPrivateKey);
+
         // Live address resolution hits an external signer/KMS/MPC provider.
         // If that provider is temporarily unreachable or misconfigured, we
         // still want the wallet list to render using the last known address
@@ -202,14 +225,27 @@ export class WalletService {
         if (wallet.walletType === 'KMS') {
           try {
             const resolvedAddress = await this.kmsService.getAddress();
-            return { ...wallet, resolvedAddress, addressSource: 'KMS' };
+            return { ...safeWallet, resolvedAddress, addressSource: 'KMS' };
           } catch {
             return {
-              ...wallet,
+              ...safeWallet,
               resolvedAddress: wallet.address,
               addressSource: 'KMS_UNAVAILABLE',
             };
           }
+        }
+
+        // User-provisioned BACKEND_SEC / MULTISIG use stored EOA (not shared signer).
+        if (
+          (wallet.walletType === 'BACKEND_SEC' ||
+            wallet.walletType === 'MULTISIG') &&
+          isUserProvisioned
+        ) {
+          return {
+            ...safeWallet,
+            resolvedAddress: wallet.address,
+            addressSource: 'USER_PROVISIONED',
+          };
         }
 
         if (
@@ -219,13 +255,13 @@ export class WalletService {
           try {
             const resolvedAddress = await this.signerService.getSignerAddress();
             return {
-              ...wallet,
+              ...safeWallet,
               resolvedAddress,
               addressSource: 'BACKEND_SIGNER',
             };
           } catch {
             return {
-              ...wallet,
+              ...safeWallet,
               resolvedAddress: wallet.address,
               addressSource: 'BACKEND_SIGNER_UNAVAILABLE',
             };
@@ -234,10 +270,14 @@ export class WalletService {
         if (wallet.walletType === 'MPC') {
           try {
             const resolvedAddress = await this.mpcService.getWalletAddress();
-            return { ...wallet, resolvedAddress, addressSource: 'DFNS_WALLET' };
+            return {
+              ...safeWallet,
+              resolvedAddress,
+              addressSource: 'DFNS_WALLET',
+            };
           } catch {
             return {
-              ...wallet,
+              ...safeWallet,
               resolvedAddress: wallet.address,
               addressSource: 'DFNS_WALLET_UNAVAILABLE',
             };
@@ -245,7 +285,7 @@ export class WalletService {
         }
 
         return {
-          ...wallet,
+          ...safeWallet,
           resolvedAddress: wallet.address,
           addressSource: 'WALLET_ROW',
         };
@@ -310,6 +350,13 @@ export class WalletService {
   async getBalance(userId: string, walletId: string) {
     const wallet = await this.prisma.wallet.findUnique({
       where: { id: walletId },
+      select: {
+        id: true,
+        userId: true,
+        walletType: true,
+        address: true,
+        encryptedPrivateKey: true,
+      },
     });
 
     if (!wallet) throw new NotFoundException('Wallet not found');
@@ -317,6 +364,25 @@ export class WalletService {
       throw new ForbiddenException('Not your wallet');
 
     try {
+      // User-provisioned BACKEND_SEC / MULTISIG: display balance of stored EOA.
+      // Withdrawal execution still uses the existing shared-signer path.
+      if (
+        (wallet.walletType === 'BACKEND_SEC' ||
+          wallet.walletType === 'MULTISIG') &&
+        Boolean(wallet.encryptedPrivateKey)
+      ) {
+        const balanceWei = await this.signerService
+          .getProvider()
+          .getBalance(wallet.address);
+
+        return {
+          walletId: wallet.id,
+          address: wallet.address,
+          balanceWei: balanceWei.toString(),
+          source: 'USER_PROVISIONED',
+        };
+      }
+
       if (['BACKEND_SEC', 'MULTISIG'].includes(wallet.walletType)) {
         const signerAddress = await this.signerService.getSignerAddress();
         const balanceWei = await this.signerService.getSignerBalance();

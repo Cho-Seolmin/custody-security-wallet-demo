@@ -9,6 +9,7 @@ import { WithdrawalAuditService } from './withdrawal-audit.service';
 import { QueueService } from './queue.service';
 import { KmsService } from './kms.service';
 import { MpcService } from './mpc.service';
+import { WalletProvisionService } from './wallet-provision.service';
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -50,6 +51,13 @@ describe('WalletService', () => {
         { provide: QueueService, useValue: {} },
         { provide: KmsService, useValue: kmsService },
         { provide: MpcService, useValue: mpcService },
+        {
+          provide: WalletProvisionService,
+          useValue: {
+            createBackendSecWallet: jest.fn(),
+            createMultisigWallet: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

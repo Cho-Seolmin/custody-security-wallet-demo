@@ -17,10 +17,10 @@ import { WalletService } from './wallet.service';
 import { UpdateLimitsDto } from './dto/update-limits.dto';
 import { UpdateWhitelistDto } from './dto/update-whitelist.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
+import { RegisterSssWalletDto } from './dto/register-sss-wallet.dto';
 
-// 이 데모는 지갑을 직접 생성하는 기능을 제공하지 않습니다.
-// 6가지 보안 모델(BACKEND_SEC / MULTISIG / POLICY_GUARD / KMS / MPC / SSS)의
-// 사전 구성된 데모 지갑을 비교·테스트하는 데 목적이 있습니다.
+// Demo wallets for POLICY_GUARD / KMS / MPC remain pre-provisioned.
+// BACKEND_SEC / MULTISIG / SSS may also be created per authenticated user.
 @Controller('wallets')
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
@@ -35,6 +35,24 @@ export class WalletController {
   @UseGuards(JwtAuthGuard)
   getSummary(@Req() req: any) {
     return this.walletService.getDashboardSummary(req.user.sub);
+  }
+
+  @Post('backend-sec')
+  @UseGuards(JwtAuthGuard)
+  createBackendSec(@Req() req: any) {
+    return this.walletService.createBackendSecWallet(req.user.sub);
+  }
+
+  @Post('multisig')
+  @UseGuards(JwtAuthGuard)
+  createMultisig(@Req() req: any) {
+    return this.walletService.createMultisigWallet(req.user.sub);
+  }
+
+  @Post('sss')
+  @UseGuards(JwtAuthGuard)
+  registerSss(@Req() req: any, @Body() dto: RegisterSssWalletDto) {
+    return this.walletService.registerSssWallet(req.user.sub, dto.address);
   }
 
   @Get(':id/balance')

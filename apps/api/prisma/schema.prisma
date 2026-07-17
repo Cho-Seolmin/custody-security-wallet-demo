@@ -91,11 +91,13 @@ model UserPreference {
 }
 
 model Wallet {
-  id         String     @id @default(cuid())
-  userId     String
-  walletType WalletType
-  address    String
-  createdAt  DateTime   @default(now())
+  id                  String     @id @default(cuid())
+  userId              String
+  walletType          WalletType
+  address             String
+  /// AES-256-GCM payload (iv:authTag:ciphertext). Null for legacy demo wallets.
+  encryptedPrivateKey String?
+  createdAt           DateTime   @default(now())
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   withdraws           WithdrawRequest[]

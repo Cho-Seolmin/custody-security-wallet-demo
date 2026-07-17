@@ -20,6 +20,7 @@ import { SssExecutor } from './executors/sss.executor';
 import { MpcSettlementService } from './mpc-settlement.service';
 import { MultisigExpirationScheduler } from './multisig-expiration.scheduler';
 import { WithdrawGateway } from './withdraw.gateway';
+import { WalletProvisionService } from './wallet-provision.service';
 
 @Module({
   imports: [AuthModule, ThrottlerModule],
@@ -27,6 +28,7 @@ import { WithdrawGateway } from './withdraw.gateway';
   providers: [
     WithdrawThrottlerGuard,
     WalletService,
+    WalletProvisionService,
     SignerService,
     PolicyEngineService,
     WithdrawalAuditService,

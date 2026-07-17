@@ -17,7 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json --forceExit"
+    "test:e2e": "jest --config ./test/jest-e2e.json --forceExit",
+    "cleanup:wallets:dry-run": "ts-node --transpile-only scripts/cleanup-non-test-wallets.ts --dry-run",
+    "cleanup:wallets:execute": "ts-node --transpile-only scripts/cleanup-non-test-wallets.ts --execute"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.1020.0",

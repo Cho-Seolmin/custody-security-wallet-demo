@@ -243,7 +243,15 @@ export class WithdrawalWorkerService implements OnModuleInit {
         }
       } catch (error: any) {
         const nextRetryCount = (withdrawRequest.retryCount ?? 0) + 1;
+        const errorCode =
+          error?.code && typeof error.code === 'string'
+            ? error.code
+            : 'EXECUTION_FAILED';
         const errorMessage = error?.message || 'Execution failed';
+        const failureReason =
+          errorCode !== 'EXECUTION_FAILED'
+            ? `${errorCode}: ${errorMessage}`
+            : errorMessage;
 
         if (nextRetryCount >= 3) {
           this.withdrawGateway.emitWithdrawUpdated({
@@ -259,13 +267,13 @@ export class WithdrawalWorkerService implements OnModuleInit {
             data: {
               status: 'FAILED',
               retryCount: nextRetryCount,
-              failureReason: errorMessage,
+              failureReason,
               finalizedAt: new Date(),
             },
           });
 
           await this.queueService.markDead(job.id, {
-            errorCode: 'EXECUTION_FAILED',
+            errorCode,
             errorMessage,
           });
 
@@ -278,6 +286,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
             message: 'ExecutionRouter failed and max retries exceeded',
             data: {
               error: errorMessage,
+              errorCode,
               retryCount: nextRetryCount,
               walletType: withdrawRequest.wallet.walletType,
             },
@@ -287,12 +296,12 @@ export class WithdrawalWorkerService implements OnModuleInit {
             where: { id: withdrawRequest.id },
             data: {
               retryCount: nextRetryCount,
-              failureReason: errorMessage,
+              failureReason,
             },
           });
 
           await this.queueService.markRetry(job.id, {
-            errorCode: 'EXECUTION_FAILED',
+            errorCode,
             errorMessage,
             retryDelaySeconds: 30,
           });
@@ -306,6 +315,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
             message: 'ExecutionRouter failed, retry scheduled',
             data: {
               error: errorMessage,
+              errorCode,
               retryCount: nextRetryCount,
               retryDelaySeconds: 30,
               walletType: withdrawRequest.wallet.walletType,
@@ -314,7 +324,7 @@ export class WithdrawalWorkerService implements OnModuleInit {
         }
 
         this.logger.error(
-          `Withdraw execution failed: requestId=${withdrawRequest.id}, error=${errorMessage}`,
+          `Withdraw execution failed: requestId=${withdrawRequest.id}, errorCode=${errorCode}, error=${errorMessage}`,
         );
       }
     } finally {

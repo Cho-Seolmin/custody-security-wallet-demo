@@ -27,6 +27,7 @@ export class ExecutionRouterService {
       case 'BACKEND_SEC':
       case 'MULTISIG':
         return this.backendSecExecutor.execute({
+          walletId: params.walletId,
           toAddress: params.toAddress,
           amountWei: params.amountWei,
         });

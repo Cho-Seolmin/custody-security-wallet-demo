@@ -9,6 +9,7 @@ import { shortenAddress } from "../utils/address";
 import { formatBalancePrimary, formatBalanceSecondary } from "../utils/balance";
 import { SSS_DEMO_RECOVERY_DOC_URL } from "../constants/sssDemoRecovery";
 import { socket } from "../lib/socket";
+import SssRestoreModal from "./SssRestoreModal";
 import "../styles/page.css";
 
 const AUTO_REFRESH_INTERVAL_MS = 20_000;
@@ -32,12 +33,29 @@ export default function WalletCard({ wallet }: Props) {
   const [whitelistAddresses, setWhitelistAddresses] = useState<string[]>([]);
 
   const [sssPrivateKey, setSssPrivateKey] = useState("");
+  const [sssUnlockedAddress, setSssUnlockedAddress] = useState("");
+  const [sssRestoreOpen, setSssRestoreOpen] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
   const withdrawLockRef = useRef(false);
 
   const [showGuide, setShowGuide] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [balanceUnit, setBalanceUnit] = useState<BalanceUnit>("ETH");
+
+  const clearSssSession = () => {
+    setSssPrivateKey("");
+    setSssUnlockedAddress("");
+  };
+
+  useEffect(() => {
+    clearSssSession();
+  }, [wallet.id]);
+
+  useEffect(() => {
+    return () => {
+      clearSssSession();
+    };
+  }, []);
 
   const securityDescriptions: Record<string, string> = {
     BACKEND_SEC: `화이트리스트 기반 출금 제어 지갑
@@ -153,7 +171,7 @@ export default function WalletCard({ wallet }: Props) {
 
       if (wallet.walletType === "SSS") {
         if (!sssPrivateKey.trim()) {
-          setMessage("SSS 출금은 private key 입력이 필요합니다.");
+          setMessage("SSS 출금 전 샤드 3개로 로컬 복원이 필요합니다.");
           return;
         }
 
@@ -170,7 +188,8 @@ export default function WalletCard({ wallet }: Props) {
         const signerAddress = await sssSigner.getAddress();
 
         if (signerAddress.toLowerCase() !== wallet.address.toLowerCase()) {
-          setMessage("private key가 SSS 지갑 주소와 일치하지 않습니다.");
+          setMessage("복원된 키가 SSS 지갑 주소와 일치하지 않습니다.");
+          clearSssSession();
           return;
         }
 
@@ -203,7 +222,7 @@ export default function WalletCard({ wallet }: Props) {
       });
 
       if (wallet.walletType === "SSS") {
-        setSssPrivateKey("");
+        clearSssSession();
       }
   
       setMessage(data.message || "출금 요청 완료");
@@ -507,9 +526,10 @@ export default function WalletCard({ wallet }: Props) {
     <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>SSS Client-side Signing</h4>
 
     <div className="info-box info-box--neutral" style={{ marginBottom: "12px" }}>
-      Private key는 브라우저에서 트랜잭션 서명에만 사용되며, 서버로 전송되거나 저장되지 않습니다.
+      샤드 3개로 브라우저에서만 키를 복원한 뒤 서명합니다.
+      프라이빗 키와 샤드는 서버로 전송되거나 브라우저에 영구 저장되지 않습니다.
       서버는 signedTx의 signer, recipient, value, chainId, nonce를 검증한 뒤 broadcast합니다.
-      요청 성공 후 입력란의 키는 클라이언트 상태에서 지워집니다.
+      출금 요청 성공 후 복원 세션은 즉시 지워집니다.
       {" "}
       <a
         href={SSS_DEMO_RECOVERY_DOC_URL}
@@ -517,24 +537,45 @@ export default function WalletCard({ wallet }: Props) {
         rel="noopener noreferrer"
         style={{ fontWeight: 600 }}
       >
-        SSS 데모 복구 가이드 (공개 샤드)
+        기존 데모 지갑 복구 가이드
       </a>
     </div>
 
-    <div className="field">
-      <label className="input-label" htmlFor={`${wallet.id}-sss-private-key`}>
-        SSS Private Key
-      </label>
-      <input
-        id={`${wallet.id}-sss-private-key`}
-        type="password"
-        className="input"
-        value={sssPrivateKey}
-        onChange={(e) => setSssPrivateKey(e.target.value)}
-        placeholder="복구된 private key 입력"
-        autoComplete="off"
-      />
-    </div>
+    {sssUnlockedAddress ? (
+      <div className="alert alert--info" style={{ marginBottom: "12px" }}>
+        로컬 복원됨: {shortenAddress(sssUnlockedAddress)}
+        <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            style={{ height: "30px", padding: "0 12px" }}
+            onClick={clearSssSession}
+          >
+            복원 세션 지우기
+          </button>
+        </div>
+      </div>
+    ) : (
+      <button
+        type="button"
+        className="btn btn--secondary"
+        style={{ marginBottom: "12px" }}
+        onClick={() => setSssRestoreOpen(true)}
+      >
+        샤드 3개로 복원
+      </button>
+    )}
+
+    <SssRestoreModal
+      open={sssRestoreOpen}
+      expectedAddress={wallet.address}
+      onClose={() => setSssRestoreOpen(false)}
+      onRestored={(privateKey, address) => {
+        setSssPrivateKey(privateKey);
+        setSssUnlockedAddress(address);
+        setMessage("SSS 키가 로컬에서 복원되었습니다. 출금 요청을 진행하세요.");
+      }}
+    />
   </div>
 )}
 

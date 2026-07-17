@@ -1,7 +1,23 @@
 import { api } from "./axios";
+import type { Wallet } from "../types/wallet";
 
 export async function getWallets() {
   const res = await api.get("/wallets");
+  return res.data;
+}
+
+export async function createBackendSecWallet(): Promise<Wallet> {
+  const res = await api.post("/wallets/backend-sec");
+  return res.data;
+}
+
+export async function createMultisigWallet(): Promise<Wallet> {
+  const res = await api.post("/wallets/multisig");
+  return res.data;
+}
+
+export async function registerSssWallet(address: string): Promise<Wallet> {
+  const res = await api.post("/wallets/sss", { address });
   return res.data;
 }
 
