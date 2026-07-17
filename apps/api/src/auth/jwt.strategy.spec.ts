@@ -5,10 +5,20 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
   let prisma: { user: { findUnique: jest.Mock } };
+  const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeEach(() => {
+    process.env.JWT_SECRET = previousJwtSecret ?? 'test-jwt-secret';
     prisma = { user: { findUnique: jest.fn() } };
     strategy = new JwtStrategy(prisma as unknown as PrismaService);
+  });
+
+  afterEach(() => {
+    if (previousJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = previousJwtSecret;
+    }
   });
 
   it('rejects verify-email tokens', async () => {

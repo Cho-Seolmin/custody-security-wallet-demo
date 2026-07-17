@@ -309,7 +309,7 @@ npm --workspace apps/web run test       # SSS 샤드 유틸 (Vitest)
 | `FRONTEND_URL` | CORS + WebSocket origin |
 | `SEPOLIA_RPC_URL` | Sepolia JSON-RPC |
 | `BACKEND_SIGNER_PRIVATE_KEY` | POLICY_GUARD 실행 · SSS broadcast provider · 레거시 BACKEND_SEC/MULTISIG **주소 일치 폴백** · 헬스. **신규 유저 생성분 출금의 주 서명자가 아님** |
-| `WALLET_ENCRYPTION_KEY` | 유저 BACKEND_SEC/MULTISIG PK 암·복호화 (64 hex). 생성 시 encrypt · 출금 시 decrypt. **분실 시 저장된 암호문 복호화 불가** |
+| `WALLET_ENCRYPTION_KEY` | 유저 BACKEND_SEC/MULTISIG PK 암·복호화 (64 hex). 생성 시 encrypt · 출금 시 decrypt. **배포 후에도 절대 변경·분실 금지** — 바꾸면 기존 암호문 복호화 불가 |
 | `POLICY_VAULT_ADDRESS` | POLICY_GUARD vault 컨트랙트 (출금 실행 시) |
 | `AWS_REGION`, `AWS_KMS_KEY_ID` (+ IAM 자격) | KMS 지갑 (공유) |
 | `DFNS_*`, `DFNS_PRIVATE_KEY_PEM` (또는 로컬 `DFNS_PRIVATE_KEY_PATH`) | MPC(DFNS) 지갑 (공유) |
@@ -395,8 +395,12 @@ UI에서 레거시 hex 샤드 import도 지원합니다. 복구된 키는 문서
 | Health Check Path | 비움 (공개 unauthenticated health 엔드포인트 없음 · `/system/health`는 Admin JWT 필요) |
 
 - `listen(PORT, '0.0.0.0')` 이미 적용됨. Railway가 주입하는 `PORT` / `DATABASE_URL` 사용.
+- Start는 `apps/api`의 `start:prod` → `node dist/main` (Nest 빌드 산출물).
+- Worker / Queue poller는 **동일 Nest 프로세스** 안에서 기동됩니다 (별도 Railway 서비스 불필요).
+- Cookie: `NODE_ENV=production`일 때 `secure` + `sameSite=none` (Vercel↔Railway 크로스 사이트). `FRONTEND_URL`은 프론트 origin과 **프로토콜·호스트·포트까지 일치**.
 - DFNS credential 키: Railway Variables에 **`DFNS_PRIVATE_KEY_PEM`** (PEM 본문)을 넣으세요. escaped `\n` 지원. 파일/Volume 불필요. 실키는 커밋하지 마세요.
 - 로컬 개발 폴백: `DFNS_PRIVATE_KEY_PATH` (PEM 파일 경로). `DFNS_PRIVATE_KEY_PEM`이 있으면 파일을 읽지 않습니다.
+- **`WALLET_ENCRYPTION_KEY`는 최초 지갑 생성 후 고정.** 재배포 시 동일 값 유지. 교체하면 기존 BACKEND_SEC/MULTISIG 키 복호화 불가.
 
 ### Vercel (Web) — 대시보드 권장값
 
