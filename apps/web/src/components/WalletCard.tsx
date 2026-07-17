@@ -65,8 +65,8 @@ export default function WalletCard({ wallet }: Props) {
     SSS: `3-of-5 복구 키 기반 지갑 (Sepolia 데모: 공개 샤드로 복구 가능)
   1. 오프라인 복구 가이드에서 3개 샤드로 private key 복구
   2. 브라우저에서 signedTx 생성
-  3. 서버는 privateKey를 저장하지 않고 signedTx만 검증 및 broadcast
-  4. 검증 완료 후 1회 출금 가능, 출금 후 다시 잠금`
+  3. 서버는 private key를 받지 않으며 signedTx만 검증·broadcast
+  4. 요청 성공 후 클라이언트 입력란의 private key는 비워짐 (서버 unlock state 없음)`
   };
 
   const copy = async (text: string) => {
@@ -507,8 +507,9 @@ export default function WalletCard({ wallet }: Props) {
     <h4 style={{ marginBottom: "12px", fontSize: "14px" }}>SSS Client-side Signing</h4>
 
     <div className="info-box info-box--neutral" style={{ marginBottom: "12px" }}>
-      private key는 서버로 저장되지 않고, 브라우저에서 signedTx 생성에만 사용됩니다.
+      Private key는 브라우저에서 트랜잭션 서명에만 사용되며, 서버로 전송되거나 저장되지 않습니다.
       서버는 signedTx의 signer, recipient, value, chainId, nonce를 검증한 뒤 broadcast합니다.
+      요청 성공 후 입력란의 키는 클라이언트 상태에서 지워집니다.
       {" "}
       <a
         href={SSS_DEMO_RECOVERY_DOC_URL}

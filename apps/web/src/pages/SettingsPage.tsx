@@ -24,7 +24,7 @@ const SECURITY_SUMMARY: Record<string, string> = {
   POLICY_GUARD: "1회 출금 한도를 초과하면 온체인에서 자동으로 거래가 차단됩니다.",
   KMS: "AWS KMS를 통한 인증 서명을 거쳐 출금이 수행됩니다.",
   MPC: "Dfns 기반 분산 키 서명으로 출금이 수행됩니다.",
-  SSS: "Sepolia 데모: 공개 3/5 샤드로 복구한 private key로 브라우저에서 1회 출금 서명이 가능합니다.",
+  SSS: "Sepolia 데모: 공개 3/5 샤드로 복구한 private key로 브라우저에서만 서명합니다. 서버는 signedTx만 검증·broadcast합니다.",
 };
 
 const WALLET_TYPE_LABELS: Record<string, string> = {
@@ -374,8 +374,9 @@ export default function SettingsPage() {
                 <span className="badge badge--gray">Sepolia</span>
               </div>
               <p style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "12px" }}>
-                포트폴리오 시연용으로 3/5 샤드가 공개되어 있습니다. 오프라인 도구로 private key를 복구한 뒤 SSS
-                지갑 카드의 Private Key 입력란에 1회 사용하세요. (서버로 전송되지 않음)
+                포트폴리오 시연용으로 공개된 Sepolia 데모 지갑의 3/5 샤드입니다.
+                오프라인 도구로 private key를 복구한 뒤 SSS 지갑 카드에 입력하세요.
+                키는 브라우저 서명에만 쓰이며 서버로 전송되지 않습니다. 요청 성공 후 입력란은 비워집니다.
               </p>
               <a
                 href={SSS_DEMO_RECOVERY_DOC_URL}

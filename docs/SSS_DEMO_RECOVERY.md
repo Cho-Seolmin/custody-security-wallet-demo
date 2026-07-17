@@ -4,7 +4,8 @@
 
 > **Sepolia 테스트 전용입니다.** 실제 자산이나 메인net에는 사용하지 마세요.  
 > 운영 환경에서는 샤드를 custodian에게 분산 보관하고, Git/웹에 공개하지 않습니다.  
-> 이 데모만 **시연 편의를 위해 3/5 샤드를 의도적으로 공개**합니다.
+> 아래 3/5 샤드는 **의도적으로 공개된 고정 Sepolia 데모 지갑**용입니다.  
+> 회원가입·지갑 생성 시마다 새로 발급되는 값이 **아닙니다.** (이 프로젝트에 지갑 생성 API/UI는 없음)
 
 ## Demo Wallet
 
@@ -13,6 +14,7 @@
 | Network | Ethereum Sepolia |
 | Threshold | 3-of-5 (아래 3개 샤드로 복구 가능) |
 | Wallet address | `0xA47a4420006348B23327a85c079AD3f37A037b07` |
+| Scope | 사전 provisioning된 데모 DB의 SSS `Wallet.address`와 일치해야 함 |
 
 ## Public Demo Shards (3/5)
 
@@ -39,19 +41,21 @@ npm install
 npm run recover
 ```
 
-4. 출력된 **private key**를 웹 UI의 SSS 지갑 **Private Key** 입력란에 붙여넣습니다. (서버로 전송되지 않음)
+4. 출력된 **private key**를 웹 UI의 SSS 지갑 **Private Key** 입력란에 붙여넣습니다. (서버로 전송되지 않음)  
+   복구된 private key는 **이 문서에 적지 마세요.**
 
-5. 출금 금액·주소 입력 후 **출금 요청** → 브라우저에서 `signedTx` 생성 → 서버는 signedTx만 검증·broadcast합니다.
+5. 출금 금액·주소 입력 후 **출금 요청** → 브라우저에서 `signedTx` 생성 → 서버는 signedTx만 검증·broadcast합니다.  
+   서버 unlock / “1회 후 자동 잠금” DB 상태는 없습니다. 요청 성공 후 UI는 입력란을 비웁니다.
 
-6. 사용 후 private key 입력값을 지우고, 터미널/클립보드 기록을 정리하세요.
+6. 터미널/클립보드에 남은 private key 기록도 정리하세요.
 
 ## 보안 모델 (데모 vs 운영)
 
 | | 데모 (이 프로젝트) | 운영 |
 | --- | --- | --- |
-| 샤드 보관 | 문서에 3/5 공개 | custodian 분산, HSM/Vault |
-| private key | 브라우저 1회 입력 | HSM/MPC/TEE 등 |
-| 서버 | signedTx만 수신 | 정책·감사·승인 파이프라인 |
+| 샤드 보관 | 고정 데모 지갑 3/5를 문서에 공개 | custodian 분산, HSM/Vault |
+| private key | 브라우저에서만 서명에 사용 | HSM/MPC/TEE 등 |
+| 서버 | signedTx만 수신·검증·broadcast | 정책·감사·승인 파이프라인 |
 
 ## 관련 코드
 

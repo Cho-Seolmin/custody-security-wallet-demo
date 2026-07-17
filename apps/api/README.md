@@ -186,7 +186,7 @@ erDiagram
 
     Wallet ||--o{ WithdrawRequest : creates
 
-    WithdrawRequest ||--|| WithdrawalQueue : queued
+    WithdrawRequest ||--o| WithdrawalQueue : queued
 
     WithdrawRequest ||--o{ WithdrawalAuditLog : logs
 
@@ -294,7 +294,8 @@ erDiagram
 
 화이트리스트 기반 출금 제어 지갑입니다.
 
-등록된 주소로만 출금할 수 있으며, Policy Engine을 통해 출금 정책을 검증합니다.
+Policy Engine이 출금 정책을 검증합니다.  
+**whitelist에 주소가 1개 이상일 때만** `toAddress`를 제한합니다. whitelist가 **비어 있으면** 주소 제한은 적용되지 않습니다(self-transfer·한도 검사는 그대로).
 
 ### MULTISIG
 
@@ -341,7 +342,7 @@ Shamir's Secret Sharing 기반 지갑입니다.
 
 복구된 private key는 브라우저에서만 사용되며, API 요청 본문이나 DB에는 절대 전송·저장되지 않습니다.
 
-**SSS 잠금/1회 출금은 DB unlock state가 아니라** “private key 입력 → signedTx 검증 → broadcast” 흐름으로 처리합니다. (과거 `WalletSecurityState` / `SssUnlockState` 스키마는 제거됨)
+서버 측 SSS unlock / “1회 후 자동 잠금” 상태는 없습니다. 흐름은 “브라우저 private key 입력 → signedTx 검증 → broadcast”이며, 요청 성공 후 프론트가 입력란을 비웁니다. (과거 `WalletSecurityState` / `SssUnlockState` 스키마는 제거됨)
 
 서버는 브라우저에서 서명이 완료된 `signedTx`만 수신합니다. `signedTx`는 signer, recipient, amount, chainId, nonce를 검증하는 데 사용되고, 이후 Worker가 브로드캐스트할 수 있도록 `WithdrawRequest.metadata.sssSignedTx`에 저장된 후 Queue에 등록됩니다. 브로드캐스트 성공 후 metadata에서 `sssSignedTx`는 삭제됩니다.
 
@@ -551,7 +552,7 @@ JWT는 `localStorage`가 아닌 `httpOnly` cookie(`accessToken`)로 발급합니
 
 복구된 private key는 브라우저에서만 사용되며 서버로 전송되지 않습니다.
 
-**Sepolia 시연용**으로 3/5 샤드는 [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md)에 공개되어 있습니다. `apps/api/tools/offline-sss-recovery`에서 `npm run recover`로 private key를 복구한 뒤 웹 UI에 1회 입력합니다.
+**Sepolia 시연용**으로 3/5 샤드는 [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md)에 공개되어 있습니다. `apps/api/tools/offline-sss-recovery`에서 `npm run recover`로 private key를 복구한 뒤, 출금 시 웹 UI에 입력해 브라우저에서 서명합니다. 서버는 private key를 저장하지 않으며, 요청 성공 후 클라이언트 입력란은 비워집니다.
 
 실제 운영 환경에서는 다음과 같은 추가 보안이 필요합니다.
 
@@ -601,13 +602,19 @@ MPC 지갑은 DFNS 기반 외부 분산 서명 구조를 사용합니다.
 ## httpOnly Cookie JWT
 
 ```text
-POST /auth/login  → Set-Cookie: accessToken (httpOnly, sameSite=lax)
+POST /auth/login  → Set-Cookie: accessToken (httpOnly)
 GET  /auth/me     → JwtAuthGuard (cookie 또는 Bearer)
-POST /auth/logout → clearCookie (secure in production)
+POST /auth/logout → clearCookie (set과 동일 path/secure/sameSite)
 ```
+
+| 환경 | cookie options (`auth/cookie.util.ts`) |
+| --- | --- |
+| development | `httpOnly`, `secure: false`, `sameSite: 'lax'`, `path: '/'` |
+| production (`NODE_ENV=production`) | `httpOnly`, `secure: true`, `sameSite: 'none'`, `path: '/'` |
 
 - Access JWT payload에 `type: 'access'` 포함. `verify-email` 등 다른 type은 API 인증 **거부**.
 - 프론트는 `localStorage`에 JWT를 두지 않음. axios `withCredentials: true`.
+- 크로스 사이트 front/API 분리는 production cookie(`sameSite=none` + HTTPS)와 `FRONTEND_URL` 일치가 필요합니다.
 
 ## 회원가입 · 이메일 인증 (데모)
 
@@ -624,8 +631,8 @@ GET  /auth/verify-email?token=... → ACTIVE
 
 | 엔드포인트 | 제한 |
 | --- | --- |
-| `POST /auth/login` | 5회 / 60초 (IP) |
-| `POST /wallets/:id/withdraw` | 10회 / 60초 (IP) |
+| `POST /auth/login` | 5회 / 60초 (**IP**, `LoginThrottlerGuard`) |
+| `POST /wallets/:id/withdraw` | 10회 / 60초 (**userId**, `WithdrawThrottlerGuard`; 미인증 시 IP) |
 
 ---
 
@@ -638,19 +645,27 @@ GET  /auth/verify-email?token=... → ACTIVE
 
 ---
 
-# Demo Data (Provisioning)
+# Demo Data (Provisioning) — seed 미포함 (의도적)
 
-코드에 `wallet.create` API는 없습니다. 시연하려면 PostgreSQL에 다음이 필요합니다.
+코드에 `wallet.create` API는 없습니다.  
+KMS / DFNS / PolicyVault / 펀딩된 Sepolia 주소는 외부 리소스라, “6종 전부 동작”을 흉내 내는 seed는 오해를 부릅니다. **호스팅 데모는 pre-provisioned DB를 전제로 하며, Prisma seed는 제공하지 않습니다.**
+
+| 구분 | 설명 |
+| --- | --- |
+| 호스팅 데모 | pre-provisioned DB + 외부 연동 완료를 가정 |
+| 신규 clone | migrate까지 가능. User/Wallet는 수동 insert 또는 dump 복원 |
+| 회원가입만 | 지갑 없음 → 6종 비교 시연 불가 |
+
+시연에 필요한 테이블(요약):
 
 | 테이블 | 내용 |
 | --- | --- |
 | `User` | ACTIVE, role USER/ADMIN |
 | `Wallet` | userId당 6종 `walletType` 각 1개 (`@@unique([userId, walletType])`) |
 | `WalletLimit` | (선택) 1회/1일 한도 |
-| `Whitelist` | BACKEND_SEC용 (선택) |
+| `Whitelist` | BACKEND_SEC용 (비어 있으면 주소 제한 없음) |
 
-로그인 UI의 `test@test.com` / `1234` 등은 **개발자 로컬 DB에 미리 넣은 계정**을 가정합니다.  
-**seed SQL은 repo에 포함하지 않습니다** — 포트폴리오 배포 시 dump 또는 수동 insert가 필요합니다.
+로그인 UI의 `test@test.com` / `1234` 등은 **프로비저닝된 DB에만** 존재합니다.
 
 ---
 
@@ -677,7 +692,7 @@ GET  /auth/verify-email?token=... → ACTIVE
 | --- | --- |
 | BACKEND_SEC | DB `Whitelist`, Backend Signer |
 | MULTISIG | AdminApproval 2명, 만료 Scheduler |
-| POLICY_GUARD | Vault 컨트랙트 주소는 Wallet/executor 파라미터 |
+| POLICY_GUARD | Vault 주소는 env **`POLICY_VAULT_ADDRESS`** (`ExecutionRouter` → PolicyGuard executor) |
 | KMS | AWS KMS Sign |
 | MPC | DFNS Transfer + Settlement polling |
 | SSS | 클라이언트 signedTx, [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md) |
@@ -696,20 +711,24 @@ VITE_SEPOLIA_RPC_URL="https://ethereum-sepolia.publicnode.com"
 # Deployment
 
 ```bash
-# API
+# API (PORT는 PaaS 주입값 사용, 미설정 시 3000; 0.0.0.0 bind)
 npm run build --workspace apps/api
-NODE_ENV=production FRONTEND_URL=https://your-web.example npm run start:prod --workspace apps/api
+NODE_ENV=production FRONTEND_URL=https://your-frontend-domain.example npm run start:prod --workspace apps/api
 
 # Web (build-time)
-VITE_API_URL=https://your-api.example npm run build --workspace apps/web
+VITE_API_URL=https://your-api-domain.example \
+VITE_SEPOLIA_RPC_URL=https://ethereum-sepolia.publicnode.com \
+  npm run build --workspace apps/web
 ```
 
 | 항목 | 설명 |
 | --- | --- |
-| `FRONTEND_URL` | API CORS + Socket.IO origin. **프론트 배포 URL과 정확히 일치** |
+| `FRONTEND_URL` | REST CORS + Socket.IO origin. **프론트 origin과 정확히 일치** (로컬 기본 `http://localhost:5173`) |
 | `VITE_API_URL` | 프론트 빌드 시 API base URL |
-| HTTPS | production cookie `secure: true` → API·Web 모두 HTTPS 권장 |
-| DB | `npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` |
+| `VITE_SEPOLIA_RPC_URL` | SSS 브라우저 서명 |
+| Cookie | production: `secure` + `sameSite=none` → **HTTPS 필수** (크로스 사이트 cookie 인증 시) |
+| `PORT` | 호스트가 주면 사용, 없으면 3000 |
+| DB | `npx prisma migrate deploy --schema apps/api/prisma/schema.prisma` + pre-provisioned 데이터 |
 
 ---
 
@@ -725,18 +744,6 @@ cp apps/web/.env.example apps/web/.env
 npm --workspace apps/api exec prisma migrate dev
 npm run dev:api
 npm run dev:web
-```
-
----
-
-# Maintenance Scripts
-
-| 경로 | 설명 |
-| --- | --- |
-| [`scripts/delete-sss.ts`](../../scripts/delete-sss.ts) | SSS 지갑 관련 레코드 일괄 삭제 |
-
-```bash
-npm --workspace apps/api exec ts-node -- ../../scripts/delete-sss.ts
 ```
 
 ---

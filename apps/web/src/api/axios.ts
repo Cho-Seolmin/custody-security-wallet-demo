@@ -22,7 +22,9 @@ api.interceptors.response.use(
       requestUrl.includes(path),
     );
 
-    if ((status === 401 || status === 403) && !isAuthEntryPoint) {
+    // 401 = unauthenticated / session expired → clear cookie and redirect.
+    // 403 = authenticated but forbidden → keep session; let the page handle it.
+    if (status === 401 && !isAuthEntryPoint) {
       try {
         await api.post("/auth/logout");
       } catch {

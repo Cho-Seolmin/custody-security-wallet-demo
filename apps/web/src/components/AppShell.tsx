@@ -421,7 +421,9 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
 
         <nav className="app-shell__nav">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter(
+            (item) => item.key !== "admin" || me?.role === "ADMIN",
+          ).map((item) => (
             <div key={item.key}>
               <button
                 type="button"

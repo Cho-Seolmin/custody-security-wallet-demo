@@ -35,7 +35,9 @@ try {
   console.log("Recovered Private Key:");
   console.log(privateKey);
   console.log("");
-  console.log("Warning: Use this private key only for one-time SSS unlock, then clear it.");
+  console.log(
+    "Warning: Use this key only in the browser Private Key field for Sepolia demo signing, then clear the input. It is never sent to the server.",
+  );
 } catch (error) {
   console.error("Recovery failed.");
   console.error(error.message);

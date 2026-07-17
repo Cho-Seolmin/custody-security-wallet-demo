@@ -30,7 +30,10 @@ export default function AdminPage() {
         const meData = await getMe();
         setMe(meData);
 
-        await fetchWithdraws("PENDING");
+        // Only call admin APIs after role is known and confirmed ADMIN.
+        if (meData.role === "ADMIN") {
+          await fetchWithdraws("PENDING");
+        }
       } catch (err: any) {
         setError(err?.response?.data?.message || "관리자 데이터 조회 실패");
       } finally {

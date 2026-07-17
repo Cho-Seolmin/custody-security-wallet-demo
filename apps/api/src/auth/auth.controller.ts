@@ -18,9 +18,11 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { LoginThrottlerGuard } from './guards/login-throttler.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { buildUserTotpAuthUrl, getUserTotpSecret } from './totp.util';
-
-const ACCESS_COOKIE = 'accessToken';
-const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+import {
+  ACCESS_COOKIE,
+  getAccessCookieOptions,
+  getClearAccessCookieOptions,
+} from './cookie.util';
 
 @Controller('auth')
 export class AuthController {
@@ -45,25 +47,14 @@ export class AuthController {
   ) {
     const { accessToken } = await this.auth.login(dto.email, dto.password);
 
-    res.cookie(ACCESS_COOKIE, accessToken, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: COOKIE_MAX_AGE_MS,
-      path: '/',
-    });
+    res.cookie(ACCESS_COOKIE, accessToken, getAccessCookieOptions());
 
     return { ok: true };
   }
 
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(ACCESS_COOKIE, {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    });
+    res.clearCookie(ACCESS_COOKIE, getClearAccessCookieOptions());
     return { ok: true };
   }
 
