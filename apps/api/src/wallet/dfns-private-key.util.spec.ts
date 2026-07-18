@@ -35,6 +35,25 @@ describe('loadDfnsPrivateKeyPem', () => {
     expect(result).not.toContain('\\n');
   });
 
+  it('rebuilds a PEM whose newlines were stripped (single-line paste)', () => {
+    const flat =
+      '-----BEGIN EC PRIVATE KEY-----MHQCAQEEICzTYSJg9CS6VRj9sv4a' +
+      'KcicG5VVzsPypzQZ5ddYmA+QoAcGBSuBBAAKoUQDQgAECds+071LmxxFX3' +
+      'KrRxm9bru8OQTfUF2TDkIj+ewqCPPck180kF9fAwjz2mJy6xgKYy9iZwFW' +
+      'nYfzWYEKwQEyqg==-----END EC PRIVATE KEY-----';
+
+    const result = loadDfnsPrivateKeyPem(
+      { DFNS_PRIVATE_KEY_PEM: flat },
+      jest.fn() as never,
+    );
+
+    const lines = result.trim().split('\n');
+    expect(lines[0]).toBe('-----BEGIN EC PRIVATE KEY-----');
+    expect(lines[lines.length - 1]).toBe('-----END EC PRIVATE KEY-----');
+    expect(lines.length).toBeGreaterThan(2);
+    expect(result).not.toContain('-----MHQ');
+  });
+
   it('falls back to DFNS_PRIVATE_KEY_PATH when PEM env is absent', () => {
     const readFile = jest.fn().mockReturnValue(`  ${SAMPLE_PEM}  `);
 
