@@ -2,6 +2,7 @@ import { ExecutionRouterService } from './execution-router.service';
 
 describe('ExecutionRouterService BACKEND_SEC / MULTISIG routing', () => {
   it('passes walletId to BackendSecExecutor for BACKEND_SEC and MULTISIG', async () => {
+    const prisma = { wallet: { findUnique: jest.fn() } };
     const backendSecExecutor = {
       execute: jest.fn().mockResolvedValue({
         type: 'ONCHAIN_TX',
@@ -14,6 +15,7 @@ describe('ExecutionRouterService BACKEND_SEC / MULTISIG routing', () => {
     const sssExecutor = { execute: jest.fn() };
 
     const router = new ExecutionRouterService(
+      prisma as any,
       backendSecExecutor as any,
       policyGuardExecutor as any,
       kmsExecutor as any,
@@ -48,7 +50,16 @@ describe('ExecutionRouterService BACKEND_SEC / MULTISIG routing', () => {
     expect(policyGuardExecutor.execute).not.toHaveBeenCalled();
   });
 
-  it('keeps SSS / KMS / MPC / POLICY_GUARD routes unchanged', async () => {
+  it('routes POLICY_GUARD using Wallet.address from DB', async () => {
+    const vaultAddress = '0x00000000000000000000000000000000000000Aa';
+    const prisma = {
+      wallet: {
+        findUnique: jest.fn().mockResolvedValue({
+          address: vaultAddress,
+          walletType: 'POLICY_GUARD',
+        }),
+      },
+    };
     const backendSecExecutor = { execute: jest.fn() };
     const policyGuardExecutor = {
       execute: jest.fn().mockResolvedValue({ type: 'ONCHAIN_TX', txHash: '0x1' }),
@@ -65,10 +76,8 @@ describe('ExecutionRouterService BACKEND_SEC / MULTISIG routing', () => {
       execute: jest.fn().mockResolvedValue({ type: 'ONCHAIN_TX', txHash: '0x3' }),
     };
 
-    process.env.POLICY_VAULT_ADDRESS =
-      '0x0000000000000000000000000000000000000001';
-
     const router = new ExecutionRouterService(
+      prisma as any,
       backendSecExecutor as any,
       policyGuardExecutor as any,
       kmsExecutor as any,
@@ -102,7 +111,15 @@ describe('ExecutionRouterService BACKEND_SEC / MULTISIG routing', () => {
       toAddress: base.toAddress,
       amountWei: 1n,
     });
-    expect(policyGuardExecutor.execute).toHaveBeenCalled();
+    expect(prisma.wallet.findUnique).toHaveBeenCalledWith({
+      where: { id: 'w1' },
+      select: { address: true, walletType: true },
+    });
+    expect(policyGuardExecutor.execute).toHaveBeenCalledWith({
+      contractAddress: vaultAddress,
+      toAddress: base.toAddress,
+      amountWei: 1n,
+    });
     expect(backendSecExecutor.execute).not.toHaveBeenCalled();
   });
 });

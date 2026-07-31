@@ -56,6 +56,7 @@ describe('WalletService', () => {
           useValue: {
             createBackendSecWallet: jest.fn(),
             createMultisigWallet: jest.fn(),
+            createPolicyGuardWallet: jest.fn(),
           },
         },
       ],

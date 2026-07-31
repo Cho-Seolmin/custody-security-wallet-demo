@@ -6,9 +6,19 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma, WalletType } from '@prisma/client';
-import { getAddress, isAddress, Wallet as EthersWallet } from 'ethers';
+import {
+  ContractFactory,
+  getAddress,
+  isAddress,
+  Wallet as EthersWallet,
+} from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { encryptPrivateKey } from '../common/crypto/wallet-key-encryption';
+import { SignerService } from './signer.service';
+import {
+  POLICY_VAULT_ABI,
+  POLICY_VAULT_BYTECODE,
+} from './policy-vault.artifact';
 
 const PROVISIONABLE_TYPES = ['BACKEND_SEC', 'MULTISIG'] as const;
 type ProvisionableWalletType = (typeof PROVISIONABLE_TYPES)[number];
@@ -26,7 +36,10 @@ export type ProvisionedWalletDto = {
 export class WalletProvisionService {
   private readonly logger = new Logger(WalletProvisionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly signerService: SignerService,
+  ) {}
 
   createBackendSecWallet(userId: string): Promise<ProvisionedWalletDto> {
     return this.createUserWallet(userId, 'BACKEND_SEC');
@@ -34,6 +47,115 @@ export class WalletProvisionService {
 
   createMultisigWallet(userId: string): Promise<ProvisionedWalletDto> {
     return this.createUserWallet(userId, 'MULTISIG');
+  }
+
+  /**
+   * Deploy a per-user PolicyVault that shares the env PolicyGuard, then
+   * store the vault address as a POLICY_GUARD wallet row.
+   */
+  async createPolicyGuardWallet(
+    userId: string,
+  ): Promise<ProvisionedWalletDto> {
+    const existing = await this.prisma.wallet.findUnique({
+      where: {
+        userId_walletType: {
+          userId,
+          walletType: 'POLICY_GUARD',
+        },
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      throw new ConflictException('이미 POLICY_GUARD 지갑이 존재합니다.');
+    }
+
+    const policyGuardRaw = process.env.POLICY_GUARD_ADDRESS;
+    if (!policyGuardRaw || !isAddress(policyGuardRaw)) {
+      throw new BadRequestException(
+        'POLICY_GUARD_ADDRESS is missing or invalid in .env',
+      );
+    }
+
+    let policyGuardAddress: string;
+    let ownerAndOperator: string;
+    let vaultAddress: string;
+
+    try {
+      policyGuardAddress = getAddress(policyGuardRaw);
+      ownerAndOperator = getAddress(
+        await this.signerService.getSignerAddress(),
+      );
+    } catch (err) {
+      this.logger.error(
+        'POLICY_GUARD address resolution failed',
+        err instanceof Error ? err.message : 'unknown error',
+      );
+      throw new BadRequestException(
+        'POLICY_GUARD_ADDRESS is missing or invalid in .env',
+      );
+    }
+
+    try {
+      const signer = this.signerService.getSigner();
+      const factory = new ContractFactory(
+        POLICY_VAULT_ABI,
+        POLICY_VAULT_BYTECODE,
+        signer,
+      );
+      const vault = await factory.deploy(
+        ownerAndOperator,
+        ownerAndOperator,
+        policyGuardAddress,
+      );
+      await vault.waitForDeployment();
+      vaultAddress = await vault.getAddress();
+    } catch (err) {
+      this.logger.error(
+        'POLICY_GUARD PolicyVault deploy failed',
+        err instanceof Error ? err.message : 'unknown error',
+      );
+      throw new InternalServerErrorException(
+        '폴리시 가드 지갑 배포에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      );
+    }
+
+    try {
+      const created = await this.prisma.wallet.create({
+        data: {
+          userId,
+          walletType: 'POLICY_GUARD',
+          address: vaultAddress,
+        },
+        select: {
+          id: true,
+          walletType: true,
+          address: true,
+          createdAt: true,
+        },
+      });
+
+      return {
+        ...created,
+        resolvedAddress: created.address,
+        addressSource: 'USER_PROVISIONED',
+      };
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('이미 POLICY_GUARD 지갑이 존재합니다.');
+      }
+
+      this.logger.error(
+        'POLICY_GUARD wallet database insert failed',
+        err instanceof Error ? err.message : 'unknown error',
+      );
+      throw new InternalServerErrorException(
+        '지갑 저장에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      );
+    }
   }
 
   /**

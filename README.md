@@ -4,8 +4,8 @@
 
 | 구분 | 상태 |
 | --- | --- |
-| **유저별 지갑 생성** | BACKEND_SEC / MULTISIG / SSS — 구현됨 |
-| **공유·외부 연동 데모** | POLICY_GUARD / KMS / MPC — 사전 구성·외부 리소스 |
+| **유저별 지갑 생성** | BACKEND_SEC / MULTISIG / SSS / POLICY_GUARD — 구현됨 |
+| **공유·외부 연동 데모** | KMS / MPC — 사전 구성·외부 리소스 (POLICY_GUARD는 사전 Wallet 행도 유지 가능) |
 | **범위** | Sepolia 테스트넷 · 포트폴리오/데모 (프로덕션 커스터디 아님) |
 
 아키텍처·보안 모델별 출금 흐름·Queue/Worker 파이프라인 등 **로직 상세**는 [`apps/api/README.md`](apps/api/README.md)를 참고하세요.
@@ -16,7 +16,7 @@
 
 | 영역 | 내용 |
 | --- | --- |
-| 유저별 프로비저닝 | BACKEND_SEC·MULTISIG(서버 EOA+암호화 저장·**출금 시 per-wallet 서명**), SSS(브라우저 3-of-5 샤드) |
+| 유저별 프로비저닝 | BACKEND_SEC·MULTISIG(서버 EOA+암호화 저장·**출금 시 per-wallet 서명**), POLICY_GUARD(유저별 PolicyVault 배포), SSS(브라우저 3-of-5 샤드) |
 | 출금 처리 | Queue + Worker 비동기, Retry, Audit Log |
 | 승인 | MULTISIG **DB 승인형** 앱 레벨 2-of-2 관리자 승인 + 10분 만료 |
 | 인증 | httpOnly cookie JWT, verify-email URL(SMTP 없음), 0.01 ETH+ OTP |
@@ -35,7 +35,7 @@
 | BACKEND_SEC | Yes (`POST /wallets/backend-sec`) | DB `encryptedPrivateKey` (AES-256-GCM) | Queue → Worker → BackendSecExecutor → **per-wallet decrypt 서명** | 생성·출금 구현 |
 | MULTISIG | Yes (`POST /wallets/multisig`) | DB `encryptedPrivateKey` (동일 유틸) | DB AdminApproval 2-of-2 → Queue → **per-wallet decrypt 서명** | 생성·출금 구현 · **온체인 멀티시그 아님** |
 | SSS | Yes (`POST /wallets/sss` 주소만) | 브라우저 샤드만 (서버 키 없음) | 브라우저 signedTx → Queue → SssExecutor broadcast | 생성·복원·서명 구현 |
-| POLICY_GUARD | No (UI placeholder만) | 공유 배포 PolicyVault | 컨트랙트 `withdraw()` | 유저별 프로비저닝 **계획** |
+| POLICY_GUARD | Yes (`POST /wallets/policy-guard`) | 유저별 PolicyVault + 공유 PolicyGuard | 컨트랙트 `withdraw()` (`Wallet.address`) | 생성·출금 구현 · 사전 Wallet 행도 호환 |
 | KMS | No (UI placeholder만) | 공유 `AWS_KMS_KEY_ID` | KMS Sign | 외부 연동 데모 · **유저별 KMS 키 생성 비계획** |
 | MPC | No (UI placeholder만) | 공유 `DFNS_WALLET_ID` | DFNS Transfer + Settlement polling | 외부 연동 데모 · **유저별 DFNS 지갑 생성 비계획** |
 
@@ -48,10 +48,7 @@
 - BACKEND_SEC 유저별 생성 + 출금 시 `encryptedPrivateKey` decrypt 서명
 - MULTISIG 유저별 생성 + DB 승인 후 **동일** per-wallet 서명
 - SSS 유저별 브라우저 생성·3-of-5 백업·복원·브라우저 서명
-
-**계획**
-
-- POLICY_GUARD 유저별 프로비저닝
+- POLICY_GUARD 유저별 PolicyVault 배포(`POLICY_GUARD_ADDRESS` 공유) + `Wallet.address`로 출금
 
 **현재 포트폴리오 단계에서 의도적으로 하지 않음**
 
@@ -129,7 +126,7 @@ sequenceDiagram
 | BACKEND_SEC | User → API → Queue → Worker → BackendSecExecutor → **Wallet.encryptedPrivateKey** decrypt 서명 |
 | MULTISIG | User → WithdrawRequest(PENDING) → AdminApproval 2-of-2 → Queue → Worker → BackendSecExecutor → **동일 per-wallet** 서명 |
 | SSS | 샤드 3개로 브라우저 복원 → 로컬 signedTx → API 검증(signer/to/value/chainId/nonce) → Queue → SssExecutor broadcast |
-| POLICY_GUARD | Queue → PolicyGuardExecutor → 공유 `POLICY_VAULT_ADDRESS` |
+| POLICY_GUARD | Queue → PolicyGuardExecutor → `Wallet.address`(PolicyVault) `withdraw()` |
 | KMS | Queue → KmsExecutor → 공유 AWS KMS |
 | MPC | Queue → MpcExecutor → 공유 DFNS + Settlement polling |
 
@@ -271,13 +268,13 @@ KMS / DFNS / 온체인 PolicyVault / 펀딩된 Sepolia 주소는 외부 프로�
 | 구분 | 가능 범위 |
 | --- | --- |
 | **호스팅 데모** | 사전 provisioning된 PostgreSQL(테스트 계정 + 외부 연동 완료)을 가정. `test@test.com` 등 |
-| **신규 clone** | 마이그레이션 후 회원가입 → Wallets에서 BACKEND_SEC / MULTISIG / SSS **셀프 생성** 가능 |
-| **POLICY_GUARD / KMS / MPC** | 유저별 생성 API 없음 · 공유 데모는 사전 Wallet 행 + 외부 env 필요 |
+| **신규 clone** | 마이그레이션 후 회원가입 → Wallets에서 BACKEND_SEC / MULTISIG / SSS / POLICY_GUARD **셀프 생성** 가능 |
+| **KMS / MPC** | 유저별 생성 API 없음 · 공유 데모는 사전 Wallet 행 + 외부 env 필요 |
 
 외부 모델별 수동 준비(요약):
 
 - BACKEND_SEC / MULTISIG **출금 실행**: 유저 생성분은 per-wallet 키 · 레거시(암호화 키 없음)는 주소 일치 시에만 공유 Signer
-- POLICY_GUARD: 배포된 vault + `POLICY_VAULT_ADDRESS`
+- POLICY_GUARD: 생성 시 `POLICY_GUARD_ADDRESS` + `BACKEND_SIGNER` 가스 · 출금은 `Wallet.address` · 기존 사전 Wallet 행도 유지
 - KMS: AWS KMS 키 + IAM
 - MPC: DFNS wallet + credential PEM
 - SSS (레거시 공개 데모): [`docs/SSS_DEMO_RECOVERY.md`](docs/SSS_DEMO_RECOVERY.md) · 신규 SSS는 사용자가 생성한 샤드 백업 사용
@@ -308,9 +305,10 @@ npm --workspace apps/web run test       # SSS 샤드 유틸 (Vitest)
 | `APP_BASE_URL` | verify-email URL 생성용 (SMTP 없음; register 응답의 `verifyUrl`) |
 | `FRONTEND_URL` | CORS + WebSocket origin |
 | `SEPOLIA_RPC_URL` | Sepolia JSON-RPC |
-| `BACKEND_SIGNER_PRIVATE_KEY` | POLICY_GUARD 실행 · SSS broadcast provider · 레거시 BACKEND_SEC/MULTISIG **주소 일치 폴백** · 헬스. **신규 유저 생성분 출금의 주 서명자가 아님** |
+| `BACKEND_SIGNER_PRIVATE_KEY` | POLICY_GUARD vault 배포·출금 · SSS broadcast provider · 레거시 BACKEND_SEC/MULTISIG **주소 일치 폴백** · 헬스. **신규 유저 생성분 출금의 주 서명자가 아님** |
 | `WALLET_ENCRYPTION_KEY` | 유저 BACKEND_SEC/MULTISIG PK 암·복호화 (64 hex). 생성 시 encrypt · 출금 시 decrypt. **배포 후에도 절대 변경·분실 금지** — 바꾸면 기존 암호문 복호화 불가 |
-| `POLICY_VAULT_ADDRESS` | POLICY_GUARD vault 컨트랙트 (출금 실행 시) |
+| `POLICY_GUARD_ADDRESS` | 유저별 PolicyVault 배포 시 공유 PolicyGuard |
+| `POLICY_VAULT_ADDRESS` | (선택) 레거시 공유 데모 vault 주소. 출금 실행은 `Wallet.address` 사용 |
 | `AWS_REGION`, `AWS_KMS_KEY_ID` (+ IAM 자격) | KMS 지갑 (공유) |
 | `DFNS_*`, `DFNS_PRIVATE_KEY_PEM` (또는 로컬 `DFNS_PRIVATE_KEY_PATH`) | MPC(DFNS) 지갑 (공유) |
 | `PORT` | (선택) listen 포트. 미설정 시 3000 |
@@ -362,7 +360,7 @@ UI에서 레거시 hex 샤드 import도 지원합니다. 복구된 키는 문서
 - MULTISIG는 **DB 승인형 워크플로우**이지 온체인 M-of-N / Safe가 아님
 - BACKEND_SEC/MULTISIG 유저 생성분은 per-wallet 암호화 키로 서명 · 공유 Signer는 레거시 주소 일치 폴백만
 - 유저 생성 BACKEND_SEC/MULTISIG 출금 전 **해당 지갑 주소**에 Sepolia ETH가 있어야 함 (공유 Signer 잔액으로 대신 보내지 않음)
-- POLICY_GUARD 유저별 프로비저닝 미구현 (UI 안내만)
+- POLICY_GUARD 생성 시 Sepolia 가스는 `BACKEND_SIGNER` 잔액에서 차감 · 신규 vault는 입금 후 출금
 - AWS KMS / DFNS는 **사전 구성된 공유** 외부 리소스 · 유저별 프로비저닝 비계획
 - SSS 샤드 백업은 사용자 책임 · 3/5 이상 분실 시 복구 불가
 - Shamir 샤드는 자동 암호화되지 않음 · 브라우저 메모리 zeroization 미보장
@@ -430,7 +428,7 @@ FRONTEND_URL=https://your-frontend-domain.example
 프론트·API를 **서로 다른 site**에 두고 cookie 인증을 쓰려면 위 production cookie 설정과 HTTPS가 필요합니다.  
 동일 origin 리버스 프록시를 쓰면 배포가 더 단순합니다.
 
-**빈 DB clone**에서도 BACKEND_SEC / MULTISIG / SSS 셀프 생성은 가능합니다. POLICY_GUARD·KMS·MPC 공유 시연은 provisioning된 DB + 외부 연동이 필요합니다.
+**빈 DB clone**에서도 BACKEND_SEC / MULTISIG / SSS / POLICY_GUARD 셀프 생성은 가능합니다. KMS·MPC 공유 시연은 provisioning된 DB + 외부 연동이 필요합니다.
 
 ---
 

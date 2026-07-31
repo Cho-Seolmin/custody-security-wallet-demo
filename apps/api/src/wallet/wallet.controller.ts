@@ -19,8 +19,8 @@ import { UpdateWhitelistDto } from './dto/update-whitelist.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
 import { RegisterSssWalletDto } from './dto/register-sss-wallet.dto';
 
-// Demo wallets for POLICY_GUARD / KMS / MPC remain pre-provisioned.
-// BACKEND_SEC / MULTISIG / SSS may also be created per authenticated user.
+// KMS / MPC remain pre-provisioned shared demos.
+// BACKEND_SEC / MULTISIG / SSS / POLICY_GUARD may be created per authenticated user.
 @Controller('wallets')
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
@@ -47,6 +47,12 @@ export class WalletController {
   @UseGuards(JwtAuthGuard)
   createMultisig(@Req() req: any) {
     return this.walletService.createMultisigWallet(req.user.sub);
+  }
+
+  @Post('policy-guard')
+  @UseGuards(JwtAuthGuard)
+  createPolicyGuard(@Req() req: any) {
+    return this.walletService.createPolicyGuardWallet(req.user.sub);
   }
 
   @Post('sss')

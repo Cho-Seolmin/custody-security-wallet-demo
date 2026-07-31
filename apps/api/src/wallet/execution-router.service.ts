@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { WalletType } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { BackendSecExecutor } from './executors/backend-sec.executor';
 import { PolicyGuardExecutor } from './executors/policy-guard.executor';
 import { KmsExecutor } from './executors/Kms.executor';
@@ -9,6 +10,7 @@ import { SssExecutor } from './executors/sss.executor';
 @Injectable()
 export class ExecutionRouterService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly backendSecExecutor: BackendSecExecutor,
     private readonly policyGuardExecutor: PolicyGuardExecutor,
     private readonly kmsExecutor: KmsExecutor,
@@ -33,15 +35,23 @@ export class ExecutionRouterService {
         });
 
       case 'POLICY_GUARD': {
-        const contractAddress = process.env.POLICY_VAULT_ADDRESS;
-        if (!contractAddress) {
+        const wallet = await this.prisma.wallet.findUnique({
+          where: { id: params.walletId },
+          select: { address: true, walletType: true },
+        });
+
+        if (
+          !wallet ||
+          wallet.walletType !== 'POLICY_GUARD' ||
+          !wallet.address
+        ) {
           throw new BadRequestException(
-            'POLICY_VAULT_ADDRESS is missing in .env',
+            'POLICY_GUARD wallet address not found',
           );
         }
 
         return this.policyGuardExecutor.execute({
-          contractAddress,
+          contractAddress: wallet.address,
           toAddress: params.toAddress,
           amountWei: params.amountWei,
         });

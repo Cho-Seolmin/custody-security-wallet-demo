@@ -54,7 +54,6 @@ export const CREATABLE_WALLET_TYPES: CreatableWalletConfig[] = [
 export const PLACEHOLDER_ONLY_MESSAGES: Partial<
   Record<CreatableWalletConfig["type"], string>
 > = {
-  POLICY_GUARD: "폴리시 가드 지갑 생성은 추후 구현 예정입니다.",
   KMS: "KMS 지갑은 외부 서비스 연동 데모로, test 계정(test@test.com)에서 시현할 수 있습니다.",
   MPC: "MPC 지갑은 외부 서비스 연동 데모로, test 계정(test@test.com)에서 시현할 수 있습니다.",
 };

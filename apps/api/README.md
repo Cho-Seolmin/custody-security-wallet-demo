@@ -4,8 +4,8 @@
 
 다양한 키 관리 모델(Backend Signer, Multisig, Policy Guard, AWS KMS, MPC, SSS)을 **동일한 출금 파이프라인**(Policy → Queue → Worker → Executor → Audit → WebSocket) 위에서 비교할 수 있도록 설계했습니다.
 
-> **유저별 지갑 생성(구현됨):** `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(주소만).  
-> **공유·외부 데모:** POLICY_GUARD / KMS / MPC는 사전 Wallet 행 + env 외부 리소스.  
+> **유저별 지갑 생성(구현됨):** `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(주소만), `POST /wallets/policy-guard`.  
+> **공유·외부 데모:** KMS / MPC는 사전 Wallet 행 + env 외부 리소스. POLICY_GUARD는 유저별 생성 가능하며, 호스팅 데모의 사전 Wallet 행도 그대로 사용합니다.  
 > 회원가입만으로 지갑이 **자동** 생성되지는 않습니다 — 프론트 Wallets UI에서 생성합니다.  
 > 포트폴리오 개요는 [`../../README.md`](../../README.md)를 참고하세요.
 
@@ -125,7 +125,7 @@ flowchart TD
 | --- | --- | --- |
 | 서버 생성·암호화 저장 | BACKEND_SEC, MULTISIG | `encryptedPrivateKey` · 출금 시 per-wallet decrypt 서명 (레거시는 주소 일치 폴백) |
 | 브라우저 키 | SSS | 서버는 주소 + signedTx만 |
-| 공유 컨트랙트 | POLICY_GUARD | `POLICY_VAULT_ADDRESS` + 공유 Signer로 컨트랙트 호출 |
+| 유저별 PolicyVault | POLICY_GUARD | `POST /wallets/policy-guard` · 출금은 `Wallet.address` + 공유 Signer |
 | 공유 외부 | KMS, MPC | AWS / DFNS env |
 
 사용자는 React 프론트엔드를 통해 출금 요청을 생성합니다.
@@ -307,8 +307,8 @@ erDiagram
 
 각 지갑은 서로 다른 보안 모델과 출금 흐름을 가집니다.
 
-> **유저별 생성 API:** `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(공개 주소만).  
-> POLICY_GUARD / KMS / MPC는 유저별 생성 API가 없으며, 공유 데모용 Wallet 행 + 외부 env를 사용합니다.  
+> **유저별 생성 API:** `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(공개 주소만), `POST /wallets/policy-guard`.  
+> KMS / MPC는 유저별 생성 API가 없으며, 공유 데모용 Wallet 행 + 외부 env를 사용합니다.  
 > `test@test.com` 등 호스팅 데모 계정은 사전 provisioning된 6종 지갑을 가질 수 있습니다.
 
 ### BACKEND_SEC
@@ -334,9 +334,9 @@ Policy Engine이 출금 정책을 검증합니다.
 
 ### POLICY_GUARD
 
-온체인 PolicyVault 컨트랙트를 통해 출금 정책을 검증하는 **공유 데모** 지갑입니다. 유저별 vault 프로비저닝은 **계획** 단계이며, 프론트는 placeholder 안내만 제공합니다.
-
-출금 시 스마트 컨트랙트의 withdraw() 함수를 호출합니다.
+온체인 PolicyVault + PolicyGuard로 출금 한도를 강제하는 지갑입니다.  
+`POST /wallets/policy-guard`로 유저별 PolicyVault를 배포하고 `Wallet.address`에 저장합니다. PolicyGuard는 env `POLICY_GUARD_ADDRESS`를 공유합니다.  
+호스팅 데모의 사전 Wallet 행(기존 공유 vault)도 그대로 두며, 출금은 항상 `Wallet.address`의 `withdraw()`를 호출합니다.
 
 ### KMS
 
@@ -674,14 +674,14 @@ GET  /auth/verify-email?token=... → ACTIVE
 
 # Demo Data (Provisioning) — seed 미포함 (의도적)
 
-유저별 생성 API가 있습니다: `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(주소만).  
-KMS / DFNS / PolicyVault / 펀딩된 Sepolia 주소는 외부 리소스라, “6종 전부 동작”을 흉내 내는 seed는 오해를 부릅니다. **Prisma seed는 제공하지 않습니다.**
+유저별 생성 API가 있습니다: `POST /wallets/backend-sec`, `POST /wallets/multisig`, `POST /wallets/sss`(주소만), `POST /wallets/policy-guard`.  
+KMS / DFNS / 펀딩된 Sepolia 주소는 외부 리소스라, “6종 전부 동작”을 흉내 내는 seed는 오해를 부릅니다. **Prisma seed는 제공하지 않습니다.**
 
 | 구분 | 설명 |
 | --- | --- |
 | 호스팅 데모 | pre-provisioned DB + 외부 연동 완료를 가정 (`test@test.com` 등) |
-| 신규 clone | migrate 후 회원가입 → Wallets UI에서 BACKEND_SEC / MULTISIG / SSS **셀프 생성** 가능 |
-| POLICY_GUARD / KMS / MPC | 유저별 생성 API 없음 · 공유 시연은 사전 Wallet 행 + 외부 env 필요 |
+| 신규 clone | migrate 후 회원가입 → Wallets UI에서 BACKEND_SEC / MULTISIG / SSS / POLICY_GUARD **셀프 생성** 가능 |
+| KMS / MPC | 유저별 생성 API 없음 · 공유 시연은 사전 Wallet 행 + 외부 env 필요 |
 | 회원가입만 | 지갑 자동 생성 없음 → UI에서 생성하거나 provisioning DB 필요 |
 
 시연에 필요한 테이블(요약):
@@ -710,7 +710,7 @@ KMS / DFNS / PolicyVault / 펀딩된 Sepolia 주소는 외부 리소스라, “6
 | `APP_BASE_URL` | register verify URL |
 | `FRONTEND_URL` | REST CORS + WebSocket CORS |
 | `SEPOLIA_RPC_URL` | Signer / KMS / MPC provider |
-| `BACKEND_SIGNER_PRIVATE_KEY` | POLICY_GUARD · SSS broadcast provider · 레거시 BACKEND_SEC/MULTISIG 주소 일치 폴백 · 헬스 |
+| `BACKEND_SIGNER_PRIVATE_KEY` | POLICY_GUARD vault 배포·출금 · SSS broadcast provider · 레거시 BACKEND_SEC/MULTISIG 주소 일치 폴백 · 헬스 |
 | `AWS_REGION`, `AWS_KMS_KEY_ID` | `KmsService` (+ `AWS_ACCESS_KEY_ID` 등 IAM) — **공유** 외부 키 |
 | `DFNS_BASE_URL`, `DFNS_ORG_ID`, `DFNS_AUTH_TOKEN`, `DFNS_CREDENTIAL_ID`, `DFNS_WALLET_ID`, **`DFNS_PRIVATE_KEY_PEM`** (또는 로컬 폴백 `DFNS_PRIVATE_KEY_PATH`) | `MpcService` — **공유** DFNS 지갑 |
 
@@ -730,7 +730,7 @@ SSS용 서버 측 private-key env는 **없습니다**.
 | --- | --- |
 | BACKEND_SEC | 유저 생성 시 `encryptedPrivateKey` · 출금은 per-wallet 서명 · DB `Whitelist` |
 | MULTISIG | 동일 암호화 저장 · AdminApproval 2명 · 출금은 per-wallet 서명 |
-| POLICY_GUARD | Vault 주소 env **`POLICY_VAULT_ADDRESS`** (공유 데모) |
+| POLICY_GUARD | 유저별 vault: `POST /wallets/policy-guard` + `POLICY_GUARD_ADDRESS` · 출금은 `Wallet.address` · (`POLICY_VAULT_ADDRESS`는 선택/레거시) |
 | KMS | 공유 AWS KMS Sign |
 | MPC | 공유 DFNS Transfer + Settlement polling |
 | SSS | 서버는 주소 + signedTx만 · 브라우저 `VITE_SEPOLIA_RPC_URL` · 레거시 [`docs/SSS_DEMO_RECOVERY.md`](../../docs/SSS_DEMO_RECOVERY.md) |

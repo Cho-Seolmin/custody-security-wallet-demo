@@ -16,6 +16,11 @@ export async function createMultisigWallet(): Promise<Wallet> {
   return res.data;
 }
 
+export async function createPolicyGuardWallet(): Promise<Wallet> {
+  const res = await api.post("/wallets/policy-guard");
+  return res.data;
+}
+
 export async function registerSssWallet(address: string): Promise<Wallet> {
   const res = await api.post("/wallets/sss", { address });
   return res.data;

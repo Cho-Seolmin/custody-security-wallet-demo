@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   createBackendSecWallet,
   createMultisigWallet,
+  createPolicyGuardWallet,
   getWallets,
 } from "../api/wallet";
 import { getPreferences } from "../api/settings";
@@ -19,6 +20,7 @@ const CREATE_SUCCESS_MESSAGE: Partial<
 > = {
   BACKEND_SEC: "백엔드 보안 지갑이 생성되었습니다.",
   MULTISIG: "멀티시그 지갑이 생성되었습니다.",
+  POLICY_GUARD: "폴리시 가드 지갑이 생성되었습니다.",
   SSS: "SSS 지갑이 생성되었습니다.",
 };
 
@@ -27,6 +29,7 @@ const CREATE_CONFLICT_FALLBACK: Partial<
 > = {
   BACKEND_SEC: "이미 BACKEND_SEC 지갑이 존재합니다.",
   MULTISIG: "이미 MULTISIG 지갑이 존재합니다.",
+  POLICY_GUARD: "이미 POLICY_GUARD 지갑이 존재합니다.",
   SSS: "이미 SSS 지갑이 존재합니다.",
 };
 
@@ -120,7 +123,11 @@ export default function WalletsPage() {
 
     if (creatingType) return;
 
-    if (walletType !== "BACKEND_SEC" && walletType !== "MULTISIG") {
+    if (
+      walletType !== "BACKEND_SEC" &&
+      walletType !== "MULTISIG" &&
+      walletType !== "POLICY_GUARD"
+    ) {
       setActionMessage("지갑 생성 기능은 다음 단계에서 연결됩니다.");
       return;
     }
@@ -128,7 +135,9 @@ export default function WalletsPage() {
     const createFn =
       walletType === "BACKEND_SEC"
         ? createBackendSecWallet
-        : createMultisigWallet;
+        : walletType === "MULTISIG"
+          ? createMultisigWallet
+          : createPolicyGuardWallet;
 
     try {
       setCreatingType(walletType);

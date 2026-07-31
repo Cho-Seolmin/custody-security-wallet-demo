@@ -49,6 +49,10 @@ export class WalletService {
     return this.walletProvisionService.createMultisigWallet(userId);
   }
 
+  createPolicyGuardWallet(userId: string) {
+    return this.walletProvisionService.createPolicyGuardWallet(userId);
+  }
+
   registerSssWallet(userId: string, address: string) {
     return this.walletProvisionService.registerSssWallet(userId, address);
   }
